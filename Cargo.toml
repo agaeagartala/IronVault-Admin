@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "ironvault-core",
+    "ironvault-ui"
+]
+resolver = "2"
