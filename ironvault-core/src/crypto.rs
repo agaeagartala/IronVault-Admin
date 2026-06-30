@@ -49,8 +49,8 @@ pub fn generate_new_enrollment_keypair() -> (String, String) {
     let signing_key = SigningKey::generate(&mut csprng);
     let verifying_key = VerifyingKey::from(&signing_key);
 
-    let private_hex = hex::encode(signing_key.to_bytes());
-    let public_hex = hex::encode(verifying_key.to_bytes());
+    let private_hex = hex::encode(&signing_key.to_bytes());
+    let public_hex = hex::encode(&verifying_key.to_bytes());
 
     (private_hex, public_hex)
 }

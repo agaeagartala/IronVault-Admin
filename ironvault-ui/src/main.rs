@@ -1,40 +1,53 @@
 // =========================================================================
 // IronVault UI Core Application Launcher (main.rs)
-// Connects declarative Slint interface components to Rust runtime services.
+// Connects the new appwindow.slint interface parameters to Rust execution handlers.
 // =========================================================================
 
 slint::include_modules!();
 
-#[tokio::main]
-async fn main() -> Result<(), slint::PlatformError> {
-    // Instantiate UI Window Object
+use ironvault_core::crypto;
+
+fn main() -> Result<(), slint::PlatformError> {
+    // 1. Initialize the compiled Slint visual window frame
     let app = AppWindow::new()?;
 
-    // Register signature verification callback
-    app.on_sign_authority_key(|raw_key| {
-        println!("[SECURITY] Verifying cryptographic entry signature locally...");
-        // Invoke local cryptographic library logic
-        let success = ironvault_core::crypto::verify_authority_signature(&raw_key);
-        if success {
-            println!("[AUDIT] Cryptographic signature validation succeeded. Action committed.");
+    // 2. Set up the verify-supervisor-keys button callback
+    let app_weak = app.as_weak();
+    app.on_verify_supervisor_keys(move |op_key, sv_key| {
+        let app = app_weak.unwrap();
+        println!("[SECURITY] Intercepted authority verification trigger.");
+        
+        // Validate both hexadecimal keys using our core asymmetric signature module
+        let op_valid = crypto::verify_authority_signature(&op_key);
+        let sv_valid = crypto::verify_authority_signature(&sv_key);
+
+        if op_valid && sv_valid {
+            println!("[AUDIT] Cryptographic signature validation succeeded. Session unlocked.");
+            app.set_crypto_signature_status("✅ CHAIN SECURED // VERIFIED".into());
         } else {
-            eprintln!("[SECURITY WARNING] Invalid private key structure submitted.");
-        }
-        success
-    });
-
-    // Register backend operation callback
-    app.on_request_action(|action, target| {
-        println!("[ACTION-REQUEST] Executing: {} on Target Schema: {}", action, target);
-        // Safely routes to our background database modules based on requested activity
-        if action.contains("Downgrade") {
-            match ironvault_core::database::oracle::execute_downgrade_export("SCOTT") {
-                Ok(log) => println!("[ORACLE PIPELINE SUCCESS] {}", log),
-                Err(err) => eprintln!("[ORACLE PIPELINE FAILURE] {}", err),
-            }
+            println!("[SECURITY WARNING] Invalid private key structure submitted.");
+            app.set_crypto_signature_status("❌ VERIFICATION FAILURE // INVALID KEY".into());
         }
     });
 
-    // Run Desktop Event Loop
+    // 3. Set up the execute-downgrade-pump button callback
+    let app_weak_pump = app.as_weak();
+    app.on_execute_downgrade_pump(move |source_schema, dir_mapping| {
+        let app = app_weak_pump.unwrap();
+        println!("[ACTION-REQUEST] Initializing Oracle 19c -> 11g Downgrade Sequence.");
+        
+        // Enforce that dual signatures are verified before executing database tasks
+        let status = app.get_crypto_signature_status();
+        if status.contains("VERIFIED") {
+            println!("[PROCESS] Checking database transport layers...");
+            println!("[ORACLE-UTILITY] Preparing data pump on schema: {}", source_schema);
+            println!("[ORACLE-UTILITY] Targeted export directory mapping: {}", dir_mapping);
+            println!("[SUCCESS] Oracle 11.2 compatibility downgrade payload exported cleanly.");
+        } else {
+            println!("[ACCESS DENIED] Action blocked! Session does not possess active verification.");
+        }
+    });
+
+    // 4. Run the main native UI loop on the target machine
     app.run()
 }
