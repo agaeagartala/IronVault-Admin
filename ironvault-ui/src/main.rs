@@ -1,8 +1,3 @@
-// =========================================================================
-// IronVault UI Core Application Launcher (main.rs)
-// Connects the new appwindow.slint interface parameters to Rust execution handlers.
-// =========================================================================
-
 slint::include_modules!();
 
 use ironvault_core::crypto;
@@ -18,24 +13,25 @@ fn main() -> Result<(), slint::PlatformError> {
     // 1. Initialize the compiled Slint UI frame window
     let app = AppWindow::new()?;
 
-    // 2. Set up registration callback (hashes and stores users)
     let app_weak = app.as_weak();
     app.on_create_new_user(move |username, password, role| {
-        let _app = app_weak.unwrap();
+        let app = app_weak.unwrap();
         
         let username_str = username.as_str().trim();
         let password_str = password.as_str().trim();
         let role_str = role.as_str().trim();
 
         if username_str.is_empty() || password_str.is_empty() {
-            println!("[AUTH GATEWAY] Blocked registration: Blank credentials.");
+            app.set_status_banner_text("[ERROR] Registration blocked: Credentials cannot be empty.".into());
+            app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
             return false;
         }
 
         let mut pool = REGISTERED_ADMINS.lock().unwrap();
         // Check for duplicate account profiles
         if pool.iter().any(|u| u.username == username_str) {
-            println!("[AUTH GATEWAY] User registration failed: User already exists.");
+            app.set_status_banner_text("[ERROR] Registration failed: Username already exists.".into());
+            app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
             return false;
         }
 
@@ -50,15 +46,16 @@ fn main() -> Result<(), slint::PlatformError> {
         };
 
         pool.push(new_user);
-        audit::log_event(&format!("USER REGISTERED: New administrator account saved for '{}'", username_str));
-        println!("[AUTH GATEWAY] Clean registry: User '{}' committed securely.", username_str);
+        audit::log_event(&format!("USER REGISTERED: New account saved for '{}'", username_str));
+        
+        app.set_status_banner_text(format!("[SUCCESS] Account registration for '{}' completed safely! You can now Sign In.", username_str).into());
+        app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
         true
     });
 
-    // 3. Set up login validation handling
     let app_weak_login = app.as_weak();
     app.on_attempt_login(move |username, password| {
-        let _app = app_weak_login.unwrap();
+        let app = app_weak_login.unwrap();
         
         let username_str = username.as_str().trim();
         let password_str = password.as_str().trim();
@@ -71,106 +68,142 @@ fn main() -> Result<(), slint::PlatformError> {
         let exists = pool.iter().any(|u| u.username == username_str && u.password_hash == check_hash);
         if exists {
             audit::log_event(&format!("LOGIN SUCCESSFUL: Admin session verified for user '{}'", username_str));
-            println!("[AUTH GATEWAY] Login verified. Unlocking dashboard.");
+            app.set_status_banner_text(format!("[SUCCESS] Authentication approved. Welcome back, {}!", username_str).into());
+            app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
             true
         } else {
             audit::log_event(&format!("LOGIN FAILURE: Invalid authentication attempt for user '{}'", username_str));
-            println!("[AUTH GATEWAY] Access denied: Credentials do not match registry.");
+            app.set_status_banner_text("[ERROR] Sign In failed: Invalid username or password credentials.".into());
+            app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
             false
         }
     });
 
-    // 4. Parameterized DB CRUD Callbacks with automatic local simulation fallback
-    let app_weak_crud = app.as_weak();
+    let app_weak_insert = app.as_weak();
     app.on_execute_crud_insert(move |schema, id, payload, status| {
-        let _app = app_weak_crud.unwrap();
-        let schema_str = schema.as_str();
-        let id_str = id.as_str();
-        let payload_str = payload.as_str();
-        let status_str = status.as_str();
+        let app = app_weak_insert.unwrap();
+        let schema_str = schema.as_str().trim();
+        let id_str = id.as_str().trim();
+        let payload_str = payload.as_str().trim();
+        let status_str = status.as_str().trim();
 
-        println!("[SQL TRIGGER] Routing secure Parameterized INSERT to schema '{}'", schema_str);
+        let process_msg = format!("[SQL ENGINE] Preparing parameterized INSERT query to schema '{}'", schema_str);
+        println!("{}", process_msg);
+        app.set_status_banner_text(process_msg.into());
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let db_uri = "host=localhost port=5432 user=postgres password=secret dbname=ironvault sslmode=disable";
         
+        let app_weak_inner = app_weak_insert.clone();
         runtime.block_on(async {
             match postgres::establish_secure_connection(db_uri).await {
                 Ok(client) => {
                     if let Err(e) = postgres::execute_dynamic_insert(&client, schema_str, id_str, payload_str, status_str).await {
-                        eprintln!("[SQL RUNTIME ERROR] Failed insert: {}", e);
+                        if let Some(inner_app) = app_weak_inner.upgrade() {
+                            inner_app.set_status_banner_text(format!("[SQL ERROR] Failed insertion: {}", e).into());
+                            inner_app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
+                        }
+                    } else if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[LIVE DB] Successfully committed INSERT to schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
                     }
                 }
                 Err(_) => {
-                    println!("[SQL SIMULATED] Local DB Offline. Simulated local insert complete to {} with ID {}", schema_str, id_str);
+                    if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[SIMULATED] Postgres offline. Local insert simulated cleanly inside schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(20, 184, 166));
+                    }
                 }
             }
         });
 
-        audit::log_event(&format!("DATABASE COMMAND: INSERT committed into {}.records ID: {}", schema_str, id_str));
+        audit::log_event(&format!("DATABASE MUTATION: Executed INSERT inside schema '{}' for record '{}'", schema_str, id_str));
     });
 
     let app_weak_update = app.as_weak();
     app.on_execute_crud_update(move |schema, id, payload| {
-        let _app = app_weak_update.unwrap();
-        let schema_str = schema.as_str();
-        let id_str = id.as_str();
-        let payload_str = payload.as_str();
+        let app = app_weak_update.unwrap();
+        let schema_str = schema.as_str().trim();
+        let id_str = id.as_str().trim();
+        let payload_str = payload.as_str().trim();
 
-        println!("[SQL TRIGGER] Routing secure Parameterized UPDATE to schema '{}'", schema_str);
+        let process_msg = format!("[SQL ENGINE] Preparing parameterized UPDATE query to schema '{}'", schema_str);
+        println!("{}", process_msg);
+        app.set_status_banner_text(process_msg.into());
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let db_uri = "host=localhost port=5432 user=postgres password=secret dbname=ironvault sslmode=disable";
         
+        let app_weak_inner = app_weak_update.clone();
         runtime.block_on(async {
             match postgres::establish_secure_connection(db_uri).await {
                 Ok(client) => {
                     if let Err(e) = postgres::execute_dynamic_update(&client, schema_str, id_str, payload_str).await {
-                        eprintln!("[SQL RUNTIME ERROR] Failed update: {}", e);
+                        if let Some(inner_app) = app_weak_inner.upgrade() {
+                            inner_app.set_status_banner_text(format!("[SQL ERROR] Failed update: {}", e).into());
+                            inner_app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
+                        }
+                    } else if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[LIVE DB] Successfully committed UPDATE to schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
                     }
                 }
                 Err(_) => {
-                    println!("[SQL SIMULATED] Local DB Offline. Simulated update complete for record {}", id_str);
+                    if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[SIMULATED] Postgres offline. Local update simulated cleanly inside schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(20, 184, 166));
+                    }
                 }
             }
         });
 
-        audit::log_event(&format!("DATABASE COMMAND: UPDATE committed in {}.records ID: {}", schema_str, id_str));
+        audit::log_event(&format!("DATABASE MUTATION: Executed UPDATE inside schema '{}' for record '{}'", schema_str, id_str));
     });
 
     let app_weak_delete = app.as_weak();
     app.on_execute_crud_delete(move |schema, id| {
-        let _app = app_weak_delete.unwrap();
-        let schema_str = schema.as_str();
-        let id_str = id.as_str();
+        let app = app_weak_delete.unwrap();
+        let schema_str = schema.as_str().trim();
+        let id_str = id.as_str().trim();
 
-        println!("[SQL TRIGGER] Routing secure Parameterized DELETE to schema '{}'", schema_str);
+        let process_msg = format!("[SQL ENGINE] Preparing parameterized DELETE query from schema '{}'", schema_str);
+        println!("{}", process_msg);
+        app.set_status_banner_text(process_msg.into());
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let db_uri = "host=localhost port=5432 user=postgres password=secret dbname=ironvault sslmode=disable";
         
+        let app_weak_inner = app_weak_delete.clone();
         runtime.block_on(async {
             match postgres::establish_secure_connection(db_uri).await {
                 Ok(client) => {
                     if let Err(e) = postgres::execute_dynamic_delete(&client, schema_str, id_str).await {
-                        eprintln!("[SQL RUNTIME ERROR] Failed delete: {}", e);
+                        if let Some(inner_app) = app_weak_inner.upgrade() {
+                            inner_app.set_status_banner_text(format!("[SQL ERROR] Failed delete: {}", e).into());
+                            inner_app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
+                        }
+                    } else if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[LIVE DB] Successfully committed DELETE to schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
                     }
                 }
                 Err(_) => {
-                    println!("[SQL SIMULATED] Local DB Offline. Simulated record deletion complete for ID {}", id_str);
+                    if let Some(inner_app) = app_weak_inner.upgrade() {
+                        inner_app.set_status_banner_text(format!("[SIMULATED] Postgres offline. Local deletion simulated cleanly inside schema '{}'", schema_str).into());
+                        inner_app.set_status_banner_color(slint::Color::from_rgb_u8(20, 184, 166));
+                    }
                 }
             }
         });
 
-        audit::log_event(&format!("DATABASE COMMAND: DELETE executed in {}.records ID: {}", schema_str, id_str));
+        audit::log_event(&format!("DATABASE MUTATION: Executed DELETE inside schema '{}' for record '{}'", schema_str, id_str));
     });
 
-    // 5. Dual-Authorization cryptographic keys checking
     let app_weak_verify = app.as_weak();
     app.on_verify_supervisor_keys(move |op_key, sv_key| {
         let app = app_weak_verify.unwrap();
-        let op_key_str = op_key.as_str();
-        let sv_key_str = sv_key.as_str();
+        let op_key_str = op_key.as_str().trim();
+        let sv_key_str = sv_key.as_str().trim();
 
         let op_valid = crypto::verify_authority_signature(op_key_str);
         let sv_valid = crypto::verify_authority_signature(sv_key_str);
@@ -192,8 +225,8 @@ fn main() -> Result<(), slint::PlatformError> {
     app.on_execute_downgrade_pump(move |schema, dir| {
         let app = app_weak_pump.unwrap();
         let sig_status = app.get_crypto_signature_status();
-        let schema_str = schema.as_str();
-        let dir_str = dir.as_str();
+        let schema_str = schema.as_str().trim();
+        let dir_str = dir.as_str().trim();
 
         if sig_status.contains("VERIFIED") {
             println!("[ORACLE-UTILITY] Preparing data pump on schema: {}", schema_str);
