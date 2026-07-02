@@ -1,10 +1,8 @@
 // =========================================================================
-// IronVault Core Module Export Gateway (lib.rs)
-// Integrates the cryptographic signature modules, schema models, and database systems.
+// IronVault Core Library Module Registrations (lib.rs)
 // =========================================================================
 
-// Expose our security validation modules to the frontend interface
 pub mod crypto;
 pub mod models;
-pub mod database;
 pub mod audit;
+pub mod database;

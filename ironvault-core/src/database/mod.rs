@@ -1,6 +1,5 @@
 // =========================================================================
-// IronVault Database Module Registration (mod.rs)
-// Gathers database drivers under a singular unified namespace.
+// IronVault Database Domain Modules (mod.rs)
 // =========================================================================
 
 pub mod oracle;

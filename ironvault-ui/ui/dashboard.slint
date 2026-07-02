@@ -5,58 +5,26 @@
 import { Theme } from "theme.slint";
 import { Button, LineEdit } from "std-widgets.slint";
 
-component DashboardRecordRow inherits Rectangle {
-    in-out property <string> series: "";
-    in-out property <string> acc-no: "";
-    in-out property <string> sub-name: "";
-    in-out property <string> status: "";
-
-    background: Theme.colors.surface;
-    height: 48px;
-
-    Rectangle {
-        y: parent.height - 1px;
-        height: 1px;
-        background: Theme.colors.border;
-    }
-
-    HorizontalLayout {
-        padding-left: Theme.space-md;
-        padding-right: Theme.space-md;
-        alignment: space-between;
-
-        Text { text: series; color: Theme.colors.text; font-size: 13px; vertical-alignment: center; width: 25%; }
-        Text { text: acc-no; color: Theme.colors.text-muted; font-size: 13px; vertical-alignment: center; width: 25%; }
-        Text { text: sub-name; color: Theme.colors.accent; font-size: 13px; vertical-alignment: center; width: 30%; }
-        Text { text: status; color: Theme.colors.success; font-size: 13px; font-weight: 700; vertical-alignment: center; width: 20%; }
-    }
-}
-
 export component Dashboard inherits Rectangle {
     background: Theme.colors.background;
 
     // Callbacks out to controller
-    callback execute-crud-insert(string, string, string);
-    callback execute-crud-update(string, string);
-    callback execute-crud-delete(string);
     callback verify-supervisor-keys(string, string);
+    callback execute-downgrade-pump(string, string);
+    callback trigger-logout();
 
     // Context & Binding State Display variables
     in-out property <string> selected-schema: "ironvault";
     in-out property <string> active-operator: "ADMINISTRATOR";
+    in-out property <string> active-role: "superadmin";
     in-out property <string> crypto-signature-status: "❌ CHAIN UNSECURED // KEYS REQUIRED";
     in-out property <string> status-banner-text: "SYSTEM ONLINE // BINDING CONFIRMED";
     in-out property <color> status-banner-color: Theme.colors.success;
 
-    // Local state fallbacks for the grid visualization
-    in-out property <string> r1-id: "GPF-SERIES-01";
-    in-out property <string> r1-account: "ACC-5524";
-    in-out property <string> r1-name: "Primary Subscriber Record";
-
     VerticalLayout {
         // Upper Status Dashboard Banner
         Rectangle {
-            height: 50px;
+            height: 60px;
             background: Theme.colors.surface;
             border-bottom-width: 1px;
             border-color: Theme.colors.border;
@@ -74,12 +42,22 @@ export component Dashboard inherits Rectangle {
                     font-weight: 700;
                     vertical-alignment: center;
                 }
-                Text {
-                    text: "ACTIVE OPERATOR: " + root.active-operator;
-                    color: Theme.colors.text-muted;
-                    font-size: 12px;
-                    font-family: Theme.mono-font;
-                    vertical-alignment: center;
+                
+                HorizontalLayout {
+                    spacing: Theme.space-md;
+                    Text {
+                        text: "OPERATOR: " + root.active-operator + " [" + root.active-role + "]";
+                        color: Theme.colors.text-muted;
+                        font-size: 12px;
+                        font-family: Theme.mono-font;
+                        vertical-alignment: center;
+                    }
+                    Button {
+                        text: "🚪 LOGOUT";
+                        clicked => {
+                            root.trigger-logout();
+                        }
+                    }
                 }
             }
         }
@@ -91,7 +69,7 @@ export component Dashboard inherits Rectangle {
             alignment: start;
 
             Text {
-                text: "ironvault.subscriber_details Workspace";
+                text: "ironvault Workspace Control Core";
                 color: Theme.colors.text;
                 font-size: 22px;
                 font-weight: 800;
@@ -111,24 +89,17 @@ export component Dashboard inherits Rectangle {
                     alignment: space-between;
 
                     VerticalLayout {
-                        width: 130px;
-                        spacing: Theme.space-xs;
-                        Text { text: "Series (Primary)"; color: Theme.colors.text-muted; font-size: 10px; font-family: Theme.mono-font; }
-                        series-input := LineEdit { placeholder-text: "GPF-SERIES-01"; }
-                    }
-
-                    VerticalLayout {
-                        width: 170px;
-                        spacing: Theme.space-xs;
-                        Text { text: "Account No (Primary Key)"; color: Theme.colors.text-muted; font-size: 10px; font-family: Theme.mono-font; }
-                        acc-input := LineEdit { placeholder-text: "ACC-5524"; }
-                    }
-
-                    VerticalLayout {
                         width: 250px;
                         spacing: Theme.space-xs;
-                        Text { text: "Subscriber Name"; color: Theme.colors.text-muted; font-size: 10px; font-family: Theme.mono-font; }
-                        name-input := LineEdit { placeholder-text: "Operator full legal name..."; }
+                        Text { text: "Schema Scope"; color: Theme.colors.text-muted; font-size: 10px; font-family: Theme.mono-font; }
+                        schema-input := LineEdit { placeholder-text: "ironvault"; text: root.selected-schema; }
+                    }
+
+                    VerticalLayout {
+                        width: 350px;
+                        spacing: Theme.space-xs;
+                        Text { text: "Replication Export Mapping Directory"; color: Theme.colors.text-muted; font-size: 10px; font-family: Theme.mono-font; }
+                        dir-input := LineEdit { placeholder-text: "/var/backup/ironvault/dump"; }
                     }
 
                     HorizontalLayout {
@@ -136,55 +107,12 @@ export component Dashboard inherits Rectangle {
                         spacing: Theme.space-sm;
 
                         Button {
-                            text: "➕ INSERT";
+                            text: "📦 REPLICATE DB";
                             clicked => {
-                                root.execute-crud-insert(series-input.text, acc-input.text, name-input.text);
-                                r1-id = series-input.text;
-                                r1-account = acc-input.text;
-                                r1-name = name-input.text;
-                            }
-                        }
-                        Button {
-                            text: "✏️ UPDATE";
-                            clicked => {
-                                root.execute-crud-update(acc-input.text, name-input.text);
-                                r1-name = name-input.text;
-                            }
-                        }
-                        Button {
-                            text: "🗑️ DELETE";
-                            clicked => {
-                                root.execute-crud-delete(acc-input.text);
-                                r1-id = "DELETED";
-                                r1-account = "DELETED";
-                                r1-name = "Record wiped from database catalog.";
+                                root.execute-downgrade-pump(schema-input.text, dir-input.text);
                             }
                         }
                     }
-                }
-            }
-
-            // Render Data List Grid
-            VerticalLayout {
-                Rectangle {
-                    background: Theme.colors.surface-hover;
-                    height: 40px;
-                    border-radius: Theme.border-radius;
-                    HorizontalLayout {
-                        padding-left: Theme.space-md;
-                        padding-right: Theme.space-md;
-                        Text { text: "SERIES ID"; color: Theme.colors.text-muted; font-size: 11px; font-family: Theme.mono-font; vertical-alignment: center; width: 25%; }
-                        Text { text: "ACCOUNT NO"; color: Theme.colors.text-muted; font-size: 11px; font-family: Theme.mono-font; vertical-alignment: center; width: 25%; }
-                        Text { text: "SUBSCRIBER NAME"; color: Theme.colors.text-muted; font-size: 11px; font-family: Theme.mono-font; vertical-alignment: center; width: 30%; }
-                        Text { text: "SECURITY ENVELOPE"; color: Theme.colors.text-muted; font-size: 11px; font-family: Theme.mono-font; vertical-alignment: center; width: 20%; }
-                    }
-                }
-
-                DashboardRecordRow {
-                    series: r1-id;
-                    acc-no: r1-account;
-                    sub-name: r1-name;
-                    status: "ACTIVE (SSL)";
                 }
             }
 
@@ -195,7 +123,7 @@ export component Dashboard inherits Rectangle {
                 border-color: Theme.colors.border;
                 border-radius: Theme.border-radius;
                 padding: Theme.space-md;
-                height: 150px;
+                height: 180px;
 
                 VerticalLayout {
                     spacing: Theme.space-md;

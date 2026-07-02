@@ -7,61 +7,55 @@ import { LoginScreen } from "login.slint";
 import { Dashboard } from "dashboard.slint";
 
 export component AppWindow inherits Window {
-    title: "IronVault Enterprise Administration Suite // Dedicated Schema: ironvault";
+    title: "IronVault Enterprise Administration Suite // Dedicated Schema: " + root.selected-schema;
     preferred-width: 1280px;
     preferred-height: 720px;
     background: Theme.colors.background;
 
-    // Master session/routing state variables
+    // Master session / routing state variables
     in-out property <bool> is-logged-in: false;
     in-out property <string> session-user: "";
+    in-out property <string> session-role: "Auditor";
     in-out property <string> app-status: "SYSTEM INITIALIZED AND ARMED";
     in-out property <color> app-status-color: Theme.colors.text-muted;
     in-out property <string> sys-hardware-id: "FETCHING MACHINE SIGNATURE...";
+    in-out property <string> selected-schema: "ironvault";
 
-    // Dynamic database bindings mapped from Rust core
-    in-out property <string> r1-id: "GPF-SERIES-01";
-    in-out property <string> r1-account: "ACC-5524";
-    in-out property <string> r1-name: "Default Pre-Seeded Subscriber Profile";
+    // Cryptographic verification state
+    in-out property <string> crypto-signature-status: "❌ CHAIN UNSECURED // KEYS REQUIRED";
 
     // Authentication signals passed to Rust main runtime
     callback attempt-login(string, string) -> bool;
     callback create-new-user(string, string, string) -> bool;
 
     // Core Parameterized Data Operations
-    callback execute-crud-insert(string, string, string, string);
-    callback execute-crud-update(string, string, string);
-    callback execute-crud-delete(string, string);
     callback verify-supervisor-keys(string, string);
     callback execute-downgrade-pump(string, string);
-
-    // Schema selected state variable
-    in-out property <string> selected-schema: "ironvault";
+    callback trigger-logout();
 
     HorizontalLayout {
         if !is-logged-in : LoginScreen {
-            status-text: root.app-status;
-            status-color: root.app-status-color;
+            error-message: root.app-status-color == Theme.colors.error ? root.app-status : "";
             hardware-id: root.sys-hardware-id;
 
             attempt-login(user, pass) => {
                 if root.attempt-login(user, pass) {
                     root.is-logged-in = true;
                     root.session-user = user;
-                    root.app-status = "SESSION ESTABLISHED SUCCESSFULLY FOR OPERATOR: " + user;
+                    root.app-status = "SESSION ESTABLISHED SAFELY";
                     root.app-status-color = Theme.colors.success;
                 } else {
-                    root.app-status = "VERIFICATION REJECTED: INVALID HASH COMPILATION";
+                    root.app-status = "AUTHENTICATION REFUSED: PASSWORD OR HARDWARE MISMATCH";
                     root.app-status-color = Theme.colors.error;
                 }
             }
 
             trigger-registration(user, pass) => {
                 if root.create-new-user(user, pass, "operator") {
-                    root.app-status = "REGISTRATION ACCEPTED: RECORD COMMITTED TO DATABASE";
+                    root.app-status = "REGISTRATION CONFIRMED: SAVED TO DATABASE";
                     root.app-status-color = Theme.colors.success;
                 } else {
-                    root.app-status = "REGISTRATION BLOCKED: USER UNIQUE CONFLICT";
+                    root.app-status = "REGISTRATION DENIED: USER UNIQUE CONFLICT OR ACCESS ERROR";
                     root.app-status-color = Theme.colors.error;
                 }
             }
@@ -70,40 +64,19 @@ export component AppWindow inherits Window {
         if is-logged-in : Dashboard {
             selected-schema: root.selected-schema;
             active-operator: root.session-user;
+            active-role: root.session-role;
             status-banner-text: root.app-status;
             status-banner-color: root.app-status-color;
-            
-            r1-id: root.r1-id;
-            r1-account: root.r1-account;
-            r1-name: root.r1-name;
-
-            execute-crud-insert(series, acc, name) => {
-                root.execute-crud-insert("ironvault", series, acc, name);
-                root.r1-id = series;
-                root.r1-account = acc;
-                root.r1-name = name;
-                root.app-status = "TRANSACTION COMMITTED: INSERT SUCCESSFULLY PROCESSED";
-                root.app-status-color = Theme.colors.success;
-            }
-
-            execute-crud-update(acc, name) => {
-                root.execute-crud-update("ironvault", acc, name);
-                root.r1-name = name;
-                root.app-status = "TRANSACTION COMMITTED: UPDATE SUCCESSFULLY PROCESSED";
-                root.app-status-color = Theme.colors.success;
-            }
-
-            execute-crud-delete(acc) => {
-                root.execute-crud-delete("ironvault", acc);
-                root.r1-id = "WIPED";
-                root.r1-account = "WIPED";
-                root.r1-name = "Record purged from database log.";
-                root.app-status = "TRANSACTION COMMITTED: DELETE SUCCESSFULLY PROCESSED";
-                root.app-status-color = Theme.colors.error;
-            }
+            crypto-signature-status: root.crypto-signature-status;
 
             verify-supervisor-keys(op, sv) => {
                 root.verify-supervisor-keys(op, sv);
+            }
+            execute-downgrade-pump(schema, dir) => {
+                root.execute-downgrade-pump(schema, dir);
+            }
+            trigger-logout() => {
+                root.trigger-logout();
             }
         }
     }

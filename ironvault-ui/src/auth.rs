@@ -10,7 +10,7 @@ static ACTIVE_SESSION: Mutex<Option<ActiveSession>> = Mutex::new(None);
 /// Initiates a system session token with hardware locks paired to the runtime operator
 pub fn establish_active_session(username: &str, role_str: &str, machine_id: &str) {
     let mut session = ACTIVE_SESSION.lock().unwrap();
-    let token = format!("IV-TOKEN-{}-{}", username.to_uppercase(), machine_id[0..6].to_uppercase());
+    let token = format!("IV-TOKEN-{}-{}", username.to_uppercase(), &machine_id[0..6].to_uppercase());
     
     *session = Some(ActiveSession {
         token,
@@ -35,3 +35,4 @@ pub fn get_session_operator_profile() -> Option<(String, String)> {
     let session = ACTIVE_SESSION.lock().unwrap();
     session.as_ref().map(|s| (s.username.clone(), s.role.to_string()))
 }
+

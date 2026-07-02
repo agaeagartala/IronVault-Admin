@@ -8,8 +8,7 @@ import { Button, LineEdit } from "std-widgets.slint";
 export component LoginScreen inherits Rectangle {
     background: Theme.colors.background;
     
-    in-out property <string> status-text: "";
-    in-out property <color> status-color: Theme.colors.text-muted;
+    in-out property <string> error-message: "";
     in-out property <string> hardware-id: "CALCULATING PHYSICAL KEYWAY...";
     
     callback attempt-login(string, string);
@@ -109,9 +108,9 @@ export component LoginScreen inherits Rectangle {
         // Live System status footer
         VerticalLayout {
             spacing: Theme.space-xs;
-            Text {
-                text: "LIVE FEEDBACK: " + root.status-text;
-                color: root.status-color;
+            if error-message != "" : Text {
+                text: "LIVE FEEDBACK: " + root.error-message;
+                color: Theme.colors.error;
                 font-size: 12px;
                 font-family: Theme.mono-font;
                 font-weight: 700;
