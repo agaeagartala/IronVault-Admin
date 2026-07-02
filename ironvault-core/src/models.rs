@@ -1,42 +1,50 @@
 // =========================================================================
-// IronVault Data Models (models.rs)
-// Structures the database schema, security accounts, and active session roles.
+// IronVault Core Domain Models & Roles (models.rs)
 // =========================================================================
 
 use serde::{Serialize, Deserialize};
 
-/// Security clearance roles matching authorization controls
+/// Stateful roles matching enterprise verification clearance gates
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub enum AuthorizationRole {
-    SuperAdministrator,
+pub enum OperatorRole {
+    SuperAdmin,
     Operator,
     Auditor,
 }
 
-/// Dynamic record structure used for real-time table visualizations
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TableRecord {
-    pub record_id: String,
-    pub payload_data: String,
-    pub owner_schema: String,
-    pub active_status: String,
+impl OperatorRole {
+    pub fn from_str(s: &str) -> Self {
+        match s.trim().to_lowercase().as_str() {
+            "admin" | "superadmin" => OperatorRole::SuperAdmin,
+            "operator" => OperatorRole::Operator,
+            _ => OperatorRole::Auditor,
+        }
+    }
+
+    pub fn to_string(&self) -> String {
+        match self {
+            OperatorRole::SuperAdmin => "superadmin".to_string(),
+            OperatorRole::Operator => "operator".to_string(),
+            OperatorRole::Auditor => "auditor".to_string(),
+        }
+    }
 }
 
-/// Registered user security credentials saved to the authentication pool
+/// Active secure system state structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AdminUser {
+pub struct ActiveSession {
+    pub token: String,
+    pub username: String,
+    pub role: OperatorRole,
+    pub hardware_binding: String,
+    pub session_start: u64,
+}
+
+/// Domain schema representing authorized admins
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdminUserRecord {
     pub username: String,
     pub password_hash: String,
-    pub assigned_role: String,
-}
-
-/// Structure representing a dynamic log entry for database auditing tasks
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SecurityAuditRecord {
-    pub timestamp: String,
-    pub requested_by: String,
-    pub action_performed: String,
-    pub target_schema: String,
-    pub signature_hash: String,
-    pub verified_by_authority: bool,
+    pub role: String,
+    pub machine_binding: String, // Dynamic fingerprint lock
 }
