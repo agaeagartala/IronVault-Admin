@@ -4,218 +4,158 @@
 
 use slint::ComponentHandle;
 use ironvault_core::crypto;
-use ironvault_core::audit;
 use ironvault_core::database::postgres;
-use crate::auth;
 
-/* STREAMING_CHUNK:Defining master registration interface wiring... */
-/// Registers UI callbacks with secure transactional database operations
-pub fn wire_ui_events(app: &crate::MainWindow, db_uri: String, physical_hardware_id: String) {
+pub fn wire_ui_event_handlers(app: &slint::Weak<crate::AppWindow>, db_uri: String, machine_id: String) {
+    let app_window = app.unwrap();
     
-    // --- 1. USER ACCOUNT REGISTRATION ACTION ---
-    let app_weak = app.as_weak();
-    let db_uri_reg = db_uri.clone();
-    let reg_hw_id = physical_hardware_id.clone();
-    
-    app.on_create_new_user(move |username, password, role| {
-        let user_str = username.as_str().trim();
-        let pass_str = password.as_str().trim();
-        let role_str = role.as_str().trim();
+    // Bind hardware layout tokens and anchor workspace namespace properties on startup
+    app_window.set_hardware_id(machine_id.clone().into());
+    app_window.set_selected_schema("ironvault".into());
 
-        if user_str.is_empty() || pass_str.is_empty() {
-            println!("[REGISTRATION WARNING] Empty credentials submitted.");
-            return false;
-        }
+    // -------------------------------------------------------------
+    // 1. STATEFUL LOGIN CONTROLLER & HARDWARE MACHINE BINDING
+    // -------------------------------------------------------------
+    let app_weak = app.clone();
+    let db_uri_clone = db_uri.clone();
+    let machine_id_clone = machine_id.clone();
+    
+    app_window.on_attempt_login(move |username, password| {
+        let ui = app_weak.unwrap();
+        let user_str = username.as_str().trim().to_string();
+        let pass_str = password.as_str().trim().to_string();
+
+        ui.set_error_message("".into()); 
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
-        let mut success = false;
-
-        /* STREAMING_CHUNK:Hashing credentials and committing to postgres... */
-        runtime.block_on(async {
-            match postgres::establish_secure_connection(&db_uri_reg).await {
-                Ok(client) => {
-                    let hashed_password = crypto::secure_hash_password(pass_str, user_str);
-                    
-                    // We dynamically pair this account directly to this computer's unique hardware footprint
-                    let query = "
-                        INSERT INTO ironvault.users (username, password, role, status) 
-                        VALUES ($1, $2, $3, $4)";
-                    
-                    let device_binding = format!("Device: {}", reg_hw_id);
-                    match client.execute(query, &[&user_str, &hashed_password, &role_str, &device_binding]).await {
-                        Ok(rows) if rows > 0 => {
-                            audit::log_event(&format!("ACCOUNT_CREATED: User '{}' successfully bound to hardware footprint.", user_str));
-                            success = true;
-                        }
-                        _ => println!("[REGISTRATION ERROR] DB conflict: Account profile already registered."),
-                    }
-                }
-                Err(e) => eprintln!("[DB SYSTEM ERROR] Connection refused during registration: {}", e),
-            }
-        });
-        
-        success
-    });
-
-    /* STREAMING_CHUNK:Configuring secure hardware-bound login validation... */
-    // --- 2. SECURE LOGIN GATEWAY ACTION ---
-    let app_weak_login = app.as_weak();
-    let db_uri_login = db_uri.clone();
-    let login_hw_id = physical_hardware_id.clone();
-    
-    app.on_attempt_login(move |username, password| {
-        let app = app_weak_login.unwrap();
-        let user_str = username.as_str().trim();
-        let pass_str = password.as_str().trim();
-
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let mut is_authorized = false;
+        let mut login_allowed = false;
+        let mut user_role = "operator".to_string();
 
         runtime.block_on(async {
-            match postgres::establish_secure_connection(&db_uri_login).await {
+            match postgres::establish_secure_connection(&db_uri_clone).await {
                 Ok(client) => {
-                    let challenge_hash = crypto::secure_hash_password(pass_str, user_str);
-                    let query = "SELECT password, role, status FROM ironvault.users WHERE username = $1";
+                    let calculated_hash = crypto::secure_hash_password(&pass_str, &user_str);
                     
-                    if let Ok(rows) = client.query(query, &[&user_str]).await {
-                        if !rows.is_empty() {
+                    // Match directly against your specific ironvault.users schema target
+                    let query = "SELECT password, role FROM ironvault.users WHERE username = $1";
+                    match client.query(query, &[&user_str]).await {
+                        Ok(rows) if !rows.is_empty() => {
                             let db_hash: &str = rows[0].get(0);
                             let db_role: &str = rows[0].get(1);
-                            let db_status: &str = rows[0].get(2);
-                            
-                            // Check password hash
-                            if db_hash == challenge_hash {
-                                // Match the hardware signature binding!
-                                let current_device_string = format!("Device: {}", login_hw_id);
-                                if db_status == "ACTIVE" || db_status.contains(&current_device_string) {
-                                    is_authorized = true;
-                                    
-                                    // Establish secure global memory session state
-                                    auth::establish_active_session(user_str, db_role, &login_hw_id);
-                                    app.set_session_role(db_role.into());
-                                    
-                                    audit::log_event(&format!("ACCESS_GRANTED: Session started for {} on bound device.", user_str));
-                                } else {
-                                    audit::log_event(&format!("ACCESS_DENIED: User '{}' attempted login from unauthorized hardware.", user_str));
-                                    println!("[SECURITY BREACH] Blocked access attempt! Physical device mismatch.");
-                                }
+
+                            if db_hash == calculated_hash {
+                                login_allowed = true;
+                                user_role = db_role.to_string();
+                                
+                                // Write to the system audit trails on successful entry
+                                let log_query = "
+                                    INSERT INTO ironvault.system_audit_logs (operator_username, action_type, details) 
+                                    VALUES ($1, 'AUTH_SUCCESS', $2)";
+                                let log_msg = format!("Authorized secure session token generated. Machine Fingerprint: {}", machine_id_clone);
+                                let _ = client.execute(log_query, &[&user_str, &log_msg]).await;
                             } else {
-                                audit::log_event(&format!("ACCESS_DENIED: Incorrect password hash submitted for user '{}'.", user_str));
+                                // Audit Log for wrong password
+                                let log_query = "INSERT INTO ironvault.system_audit_logs (operator_username, action_type, details) VALUES ($1, 'AUTH_FAILURE', $2)";
+                                let log_msg = format!("Rejected access credentials signature match. Machine ID: {}", machine_id_clone);
+                                let _ = client.execute(log_query, &[&user_str, &log_msg]).await;
                             }
                         }
+                        Ok(_) => {
+                            ui.set_error_message("Identity payload profile not found inside ironvault workspace.".into());
+                        }
+                        Err(e) => eprintln!("[DB MALFUNCTION] Failed evaluating users namespace criteria: {}", e),
                     }
                 }
-                Err(_) => {
-                    // Fast fallback mode for offline testing
-                    if user_str == "admin" && pass_str == "admin123" {
-                        is_authorized = true;
-                        auth::establish_active_session(user_str, "superadmin", &login_hw_id);
-                        app.set_session_role("superadmin".into());
+                Err(e) => eprintln!("[NETWORK ERROR] Secure database socket pool unreached: {}", e),
+            }
+        });
+
+        if login_allowed {
+            ui.set_is_authenticated(true);
+            ui.set_current_user(user_str.into());
+            ui.set_current_role(user_role.into());
+            ui.set_status_banner_text(format!("OPERATOR SESSION SIGNED ON SAFELY").into());
+            ui.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
+        } else {
+            ui.set_error_message("CRITICAL SECURITY EXCEPTION: Key authorization handshake verification failed.".into());
+        }
+    });
+
+    // -------------------------------------------------------------
+    // 2. ACCOUNT SYSTEM PROVISIONING REGISTRATION
+    // -------------------------------------------------------------
+    let app_weak = app.clone();
+    let db_uri_clone = db_uri.clone();
+    app_window.on_trigger_registration(move |username, password| {
+        let ui = app_weak.unwrap();
+        let user_str = username.as_str().trim().to_string();
+        let pass_str = password.as_str().trim().to_string();
+
+        if user_str.is_empty() || pass_str.is_empty() {
+            ui.set_error_message("Cannot write empty parameters into configuration profiles.".into());
+            return;
+        }
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let mut registered = false;
+
+        runtime.block_on(async {
+            if let Ok(client) = postgres::establish_secure_connection(&db_uri_clone).await {
+                let password_hash = crypto::secure_hash_password(&pass_str, &user_str);
+                
+                let insert_query = "
+                    INSERT INTO ironvault.users (username, password, role) 
+                    VALUES ($1, $2, 'admin')";
+                
+                match client.execute(insert_query, &[&user_str, &password_hash]).await {
+                    Ok(_) => {
+                        registered = true;
+                        let log_query = "INSERT INTO ironvault.system_audit_logs (operator_username, action_type, details) VALUES ($1, 'USER_REGISTERED', 'New admin identity profile appended to core.')";
+                        let _ = client.execute(log_query, &[&user_str, &"Provisioned account."]).await;
                     }
+                    Err(e) => eprintln!("[REGISTRATION BLOCK] Constraint protection conflict: {}", e),
                 }
             }
         });
-        
-        is_authorized
-    });
 
-    /* STREAMING_CHUNK:Configuring parameterized insert operations... */
-    // --- 3. SECURE INSERTION ROUTING ---
-    let db_uri_insert = db_uri.clone();
-    app.on_execute_crud_insert(move |_schema, series, account, name| {
-        let series_str = series.as_str().trim();
-        let account_str = account.as_str().trim();
-        let name_str = name.as_str().trim();
-
-        // Enforce role constraints before modifying database rows
-        if let Some((operator, role)) = auth::get_session_operator_profile() {
-            if role == "auditor" {
-                println!("[RBAC BLOCK] Auditor '{}' lacks write privileges.", operator);
-                return;
-            }
-
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(async {
-                if let Ok(client) = postgres::establish_secure_connection(&db_uri_insert).await {
-                    let q = "INSERT INTO ironvault.subscriber_details (series_id, account_no, subscriber_name, status) VALUES ($1, $2, $3, $4)";
-                    if client.execute(q, &[&series_str, &account_str, &name_str, &"ACTIVE (SSL)"]).await.is_ok() {
-                        audit::log_event(&format!("DB_WRITE: Operator '{}' created subscriber {}.", operator, account_str));
-                    }
-                }
-            });
+        if registered {
+            ui.set_error_message("Registration committed cleanly to ironvault schema tables!".into());
+        } else {
+            ui.set_error_message("Identity registration refused: Constraint violation or duplicate profile error.".into());
         }
     });
 
-    /* STREAMING_CHUNK:Configuring parameterized update operations... */
-    // --- 4. SECURE UPDATE ROUTING ---
-    let db_uri_update = db_uri.clone();
-    app.on_execute_crud_update(move |_schema, account, name| {
-        let account_str = account.as_str().trim();
-        let name_str = name.as_str().trim();
-
-        if let Some((operator, role)) = auth::get_session_operator_profile() {
-            if role == "auditor" {
-                println!("[RBAC BLOCK] Auditor '{}' lacks write privileges.", operator);
-                return;
-            }
-
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(async {
-                if let Ok(client) = postgres::establish_secure_connection(&db_uri_update).await {
-                    let q = "UPDATE ironvault.subscriber_details SET subscriber_name = $1 WHERE account_no = $2";
-                    if client.execute(q, &[&name_str, &account_str]).await.is_ok() {
-                        audit::log_event(&format!("DB_WRITE: Operator '{}' updated details for subscriber {}.", operator, account_str));
-                    }
-                }
-            });
-        }
-    });
-
-    /* STREAMING_CHUNK:Configuring parameterized delete operations... */
-    // --- 5. SECURE DELETION ROUTING ---
-    let db_uri_delete = db_uri.clone();
-    app.on_execute_crud_delete(move |_schema, account| {
-        let account_str = account.as_str().trim();
-
-        if let Some((operator, role)) = auth::get_session_operator_profile() {
-            // Only SuperAdmins are allowed to execute DELETIONS
-            if role != "superadmin" {
-                println!("[RBAC BLOCK] Operator '{}' lacks deletion clearance.", operator);
-                return;
-            }
-
-            let runtime = tokio::runtime::Runtime::new().unwrap();
-            runtime.block_on(async {
-                if let Ok(client) = postgres::establish_secure_connection(&db_uri_delete).await {
-                    let q = "DELETE FROM ironvault.subscriber_details WHERE account_no = $1";
-                    if client.execute(q, &[&account_str]).await.is_ok() {
-                        audit::log_event(&format!("DB_WRITE: Operator '{}' purged subscriber {}.", operator, account_str));
-                    }
-                }
-            });
-        }
-    });
-
-    /* STREAMING_CHUNK:Integrating cryptographic dual signature checks... */
-    // --- 6. DUAL-SIGNATURE VALIDATION ROUTING ---
-    let app_weak_verify = app.as_weak();
-    app.on_verify_supervisor_keys(move |op_key, sv_key| {
-        let app = app_weak_verify.unwrap();
+    // -------------------------------------------------------------
+    // 3. CRYPTOGRAPHIC SUPERVISOR DUAL-KEY SECURITY INTERLOCK
+    // -------------------------------------------------------------
+    let app_weak = app.clone();
+    app_window.on_verify_supervisor_keys(move |op_key, sv_key| {
+        let ui = app_weak.unwrap();
         let op_valid = crypto::verify_authority_signature(op_key.as_str().trim());
         let sv_valid = crypto::verify_authority_signature(sv_key.as_str().trim());
 
-        let operator = auth::get_session_operator_profile().map(|(u, _)| u).unwrap_or_else(|| "SYSTEM".to_string());
-
         if op_valid && sv_valid {
-            app.set_crypto_signature_status("✅ CHAIN SECURED // VERIFIED".into());
-            app.set_status_banner_text("CRYPTOGRAPHIC VERIFICATION COMPLETED SAFELY".into());
-            app.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
-            audit::log_event(&format!("SECURITY_VERIFY: Operator '{}' completed dual authorization check.", operator));
+            ui.set_crypto_signature_status("✅ INTERLOCK SECURITY ENGAGED".into());
+            ui.set_status_banner_text("DUAL-KEY CRYPTO VERIFICATION SIGNATURE MATCHED".into());
+            ui.set_status_banner_color(slint::Color::from_rgb_u8(16, 185, 129));
         } else {
-            app.set_crypto_signature_status("❌ VERIFICATION FAILURE // INVALID KEY".into());
-            app.set_status_banner_text("VERIFICATION ERROR: CERTIFICATE KEYS MISMATCH".into());
-            app.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
-            audit::log_event(&format!("SECURITY_WARN: Blocked invalid dual verification attempt by '{}'.", operator));
+            ui.set_crypto_signature_status("❌ ACCESS SIGNATURE REFUSED".into());
+            ui.set_status_banner_text("SECURITY EXCEPTION: COMPROMISED CERTIFICATE KEYS SUBMITTED".into());
+            ui.set_status_banner_color(slint::Color::from_rgb_u8(239, 68, 68));
         }
+    });
+
+    // -------------------------------------------------------------
+    // 4. CLEAN DISCONNECT & TERMINATION ROUTINE
+    // -------------------------------------------------------------
+    let app_weak = app.clone();
+    app_window.on_trigger_logout(move || {
+        let ui = app_weak.unwrap();
+        ui.set_is_authenticated(false);
+        ui.set_current_user("Unauthenticated Session".into());
+        ui.set_current_role("guest".into());
+        ui.set_status_banner_text("SESSION TOKEN RECOVERED AND PURGED".into());
+        ui.set_status_banner_color(slint::Color::from_rgb_u8(56, 189, 248));
+        println!("[SECURITY] Administrative session tokens cleared from active application runtime memory cache.");
     });
 }

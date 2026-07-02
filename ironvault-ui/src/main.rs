@@ -8,6 +8,7 @@ use ironvault_core::crypto;
 use ironvault_core::audit;
 use ironvault_core::database::postgres;
 use ironvault_ui::auth;
+use controllers::wire_ui_event_handlers
 
 fn main() -> Result<(), slint::PlatformError> {
     // Collect the dynamic hardware fingerprint binding signature

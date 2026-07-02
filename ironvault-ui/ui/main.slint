@@ -4,112 +4,75 @@
 
 import { Theme } from "theme.slint";
 import { LoginScreen } from "login.slint";
-import { Dashboard } from "dashboard.slint";
+import { DashboardScreen } from "dashboard.slint";
 
-export component MainWindow inherits Window {
-title: "IronVault Enterprise Administration Suite // Dedicated Schema: " + root.selected-schema;
-preferred-width: 1280px;
-preferred-height: 720px;
-background: Theme.colors.background;
+export component AppWindow inherits Window {
+    title: "IRONVAULT // Enterprise Administration Control Core";
+    width: 1100px;
+    height: 700px;
+    background: Theme.colors.background;
 
-// Master session / routing state variables
-in-out property <bool> is-logged-in: false;
-in-out property <string> session-user: "";
-in-out property <string> session-role: "Auditor";
-in-out property <string> app-status: "SYSTEM INITIALIZED AND ARMED";
-in-out property <color> app-status-color: Theme.colors.text-muted;
-in-out property <string> sys-hardware-id: "FETCHING MACHINE SIGNATURE...";
-in-out property <string> selected-schema: "ironvault";
+    // Stateful global session flags tracked by controllers.rs
+    in-out property <bool> is-authenticated: false;
+    in-out property <string> current-user: "Unauthenticated Session";
+    in-out property <string> current-role: "guest";
+    in-out property <string> hardware-id: "FINGERPRINT-CALCULATING...";
+    in-out property <string> error-message: "";
 
-// Dynamic database bindings mapped from Rust core
-in-out property <string> r1-id: "GPF-SERIES-01";
-in-out property <string> r1-account: "ACC-5524";
-in-out property <string> r1-name: "Default Pre-Seeded Subscriber Profile";
+    // Global parameters matching ironvault system targets
+    in-out property <string> selected-schema: "ironvault";
+    in-out property <string> crypto-signature-status: "AWAITING AUTHORIZATION CHAIN";
+    in-out property <string> status-banner-text: "SYSTEM INITIALIZED // SECURE CHANNEL ONLINE";
+    in-out property <color> status-banner-color: Theme.colors.primary;
 
-// Cryptographic verification state
-in-out property <string> crypto-signature-status: "❌ CHAIN UNSECURED // KEYS REQUIRED";
+    // Interface functional interaction callbacks mapped out to controllers.rs
+    callback attempt-login(string, string);
+    callback trigger-registration(string, string);
+    callback execute-crud-insert(string, string, string, string);
+    callback execute-crud-update(string, string, string);
+    callback execute-crud-delete(string, string);
+    callback verify-supervisor-keys(string, string);
+    callback execute-downgrade-pump(string, string);
+    callback trigger-logout();
 
-// Authentication signals passed to Rust main runtime
-callback attempt-login(string, string) -> bool;
-callback create-new-user(string, string, string) -> bool;
-
-// Core Parameterized Data Operations
-callback execute-crud-insert(string, string, string, string);
-callback execute-crud-update(string, string, string);
-callback execute-crud-delete(string, string);
-callback verify-supervisor-keys(string, string);
-callback execute-downgrade-pump(string, string);
-
-/* STREAMING_CHUNK:Rendering visual composition states... */
-HorizontalLayout {
-    if !is-logged-in : LoginScreen {
-        error-message: root.app-status-color == Theme.colors.error ? root.app-status : "";
-        hardware-id: root.sys-hardware-id;
-
-        attempt-login(user, pass) => {
-            if root.attempt-login(user, pass) {
-                root.is-logged-in = true;
-                root.session-user = user;
-                root.app-status = "SESSION ESTABLISHED SAFELY";
-                root.app-status-color = Theme.colors.success;
-            } else {
-                root.app-status = "AUTHENTICATION REFUSED: PASSWORD OR HARDWARE MISMATCH";
-                root.app-status-color = Theme.colors.error;
-            }
-        }
-
-        trigger-registration(user, pass) => {
-            if root.create-new-user(user, pass, "operator") {
-                root.app-status = "REGISTRATION CONFIRMED: SAVED TO DATABASE";
-                root.app-status-color = Theme.colors.success;
-            } else {
-                root.app-status = "REGISTRATION DENIED: USER UNIQUE CONFLICT OR ACCESS ERROR";
-                root.app-status-color = Theme.colors.error;
-            }
-        }
-    }
-
-    if is-logged-in : Dashboard {
-        selected-schema: root.selected-schema;
-        active-operator: root.session-user + " [" + root.session-role + "]";
-        status-banner-text: root.app-status;
-        status-banner-color: root.app-status-color;
-        crypto-signature-status: root.crypto-signature-status;
+    // Structural Viewport Controller Layout
+    if !is-authenticated : LoginScreen {
+        error-message: root.error-message;
+        hardware-id: root.hardware-id;
         
-        r1-id: root.r1-id;
-        r1-account: root.r1-account;
-        r1-name: root.r1-name;
-
-        execute-crud-insert(series, acc, name) => {
-            root.execute-crud-insert(root.selected-schema, series, acc, name);
-            root.r1-id = series;
-            root.r1-account = acc;
-            root.r1-name = name;
-            root.app-status = "TRANSACTION COMMITTED: INSERT SUCCESSFUL";
-            root.app-status-color = Theme.colors.success;
+        attempt-login(user, pass) => {
+            root.attempt-login(user, pass);
         }
-
-        execute-crud-update(acc, name) => {
-            root.execute-crud-update(root.selected-schema, acc, name);
-            root.r1-name = name;
-            root.app-status = "TRANSACTION COMMITTED: UPDATE SUCCESSFUL";
-            root.app-status-color = Theme.colors.success;
-        }
-
-        execute-crud-delete(acc) => {
-            root.execute-crud-delete(root.selected-schema, acc);
-            root.r1-id = "DELETED";
-            root.r1-account = "DELETED";
-            root.r1-name = "Record purged from database catalog.";
-            root.app-status = "TRANSACTION COMMITTED: DELETE SUCCESSFUL";
-            root.app-status-color = Theme.colors.error;
-        }
-
-        verify-supervisor-keys(op, sv) => {
-            root.verify-supervisor-keys(op, sv);
+        trigger-registration(user, pass) => {
+            root.trigger-registration(user, pass);
         }
     }
-}
 
+    if is-authenticated : DashboardScreen {
+        current-user: root.current-user;
+        current-role: root.current-role;
+        selected-schema: root.selected-schema;
+        crypto-signature-status: root.crypto-signature-status;
+        status-banner-text: root.status-banner-text;
+        status-banner-color: root.status-banner-color;
 
+        execute-crud-insert(schema, id, payload, status) => {
+            root.execute-crud-insert(schema, id, payload, status);
+        }
+        execute-crud-update(schema, id, payload) => {
+            root.execute-crud-update(schema, id, payload);
+        }
+        execute-crud-delete(schema, id) => {
+            root.execute-crud-delete(schema, id);
+        }
+        verify-supervisor-keys(op-key, sv-key) => {
+            root.verify-supervisor-keys(op-key, sv-key);
+        }
+        execute-downgrade-pump(schema, directory) => {
+            root.execute-downgrade-pump(schema, directory);
+        }
+        trigger-logout() => {
+            root.trigger-logout();
+        }
+    }
 }
