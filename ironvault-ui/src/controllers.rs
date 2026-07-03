@@ -1,64 +1,42 @@
-// =========================================================================
-// IronVault Core UI Event Handlers & Controllers (controllers.rs)
-// =========================================================================
 use crate::AppWindow;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model, SharedString, VecModel};
+use std::rc::Rc;
 
 pub fn setup_event_handlers(app: &AppWindow) {
     let app_weak = app.as_weak();
 
-    // 1. Hook Up Oracle 11g Button Processing
-    app.on_execute_11g_action(move |schema, action| {
+    // 1. Hook Up the Grid Update/Modification Callback
+    app.on_update_record_commit(move |index, new_title, new_status| {
         let ui = app_weak.unwrap();
-        let target_schema = schema.as_str().trim().to_string();
-        let action_type = action.as_str().trim().to_string();
-
-        ui.set_status_text(format!("CONNECTING LIVE TO ORACLE 11G [{}]...", target_schema).into());
-
-        let app_handle = app_weak.clone();
-        std::thread::spawn(move || {
-            // Forward variables directly to the core 11g driver engine
-            let result = ironvault_db::oracle_11g::run_11g_operation(&target_schema, &action_type);
-
-            let _ = slint::invoke_from_event_loop(move || {
-                let ui_thread = app_handle.unwrap();
-                match result {
-                    Ok(msg) => {
-                        ui_thread.set_status_text(msg.into());
-                    }
-                    Err(err) => {
-                        ui_thread.set_status_text(format!("11G SYSTEM FAULT: {}", err).into());
-                    }
+        
+        // Extract the existing row data model array from Slint state context
+        let current_model = ui.get_table_data();
+        
+        // Build a fresh vector to compute modified changes
+        let mut updated_vector = Vec::new();
+        for i in 0..current_model.row_count() {
+            if let Some(mut record) = current_model.row_data(i) {
+                // If this is the row the operator clicked on, inject the modifications
+                if i == index as usize {
+                    record.title = new_title.clone();
+                    record.status = new_status.clone();
                 }
-            });
-        });
+                updated_vector.push(record);
+            }
+        }
+
+        // Wrap it back into a Slint compatible shared vector model pointer structure
+        let new_model = Rc::new(VecModel::from(updated_vector));
+        
+        // Re-inject the data right back into the UI. The grid updates on screen immediately!
+        ui.set_table_data(new_model.into());
+        
+        // Unselect the row panel and push a success message down to the console status bar
+        ui.set_selected_row_index(-1);
+        ui.set_status_text("SUCCESS: Modifications committed to memory model.".into());
     });
 
-    let app_weak_12c = app.as_weak();
-    // 2. Hook Up Oracle 12c Button Processing
-    app.on_execute_12c_action(move |schema, action| {
-        let ui = app_weak_12c.unwrap();
-        let target_schema = schema.as_str().trim().to_string();
-        let action_type = action.as_str().trim().to_string();
-
-        ui.set_status_text(format!("ROUTING COMMAND TO ORACLE 12C [{}]...", target_schema).into());
-
-        let app_handle = app_weak_12c.clone();
-        std::thread::spawn(move || {
-            // Forward variables directly to the core 12c driver engine
-            let result = ironvault_db::oracle_12c::run_12c_operation(&target_schema, &action_type);
-
-            let _ = slint::invoke_from_event_loop(move || {
-                let ui_thread = app_handle.unwrap();
-                match result {
-                    Ok(msg) => {
-                        ui_thread.set_status_text(msg.into());
-                    }
-                    Err(err) => {
-                        ui_thread.set_status_text(format!("12C SYSTEM FAULT: {}", err).into());
-                    }
-                }
-            });
-        });
-    });
+    // 2. Legacy Empty Callback Bindings to maintain module integrity
+    app.on_execute_11g_action(|_, _| {});
+    app.on_execute_12c_action(|_, _| {});
 }
