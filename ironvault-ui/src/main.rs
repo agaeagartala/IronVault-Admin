@@ -3,70 +3,48 @@
 //! Initializes the Slint UI framework and establishes connections
 //! to the core security and database layers
 
-mod controllers;
-
-use ironvault_core::{SecurityValidator, LicenseManager};
-use ironvault_db::PostgresConnection;
-use log::info;
-
-slint::include_modules!();
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    env_logger::Builder::from_default_env()
-        .format_timestamp_millis()
-        .init();
-
-    info!("=== IronVault Admin Starting ===");
-
-    // Perform security validation
-    if let Err(e) = SecurityValidator::validate_environment() {
-        log::error!("Security validation failed: {:?}", e);
-        return Err(format!("Security check failed: {:?}", e).into());
-    }
-
-    info!("✓ Security validation passed");
-
-    // Initialize database connection
-    let db_url = std::env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://admin:password@localhost/ironvault".to_string());
-    
-    let db = PostgresConnection::new(&db_url).await?;
-    info!("✓ Database connection established");
-
-    // Initialize Slint UI
-    let ui = MainWindow::new()?;
-    
-    // Configure window properties
-    ui.set_app_version("1.0.0".into());
-    ui.set_copyright_text("© 2024 IronVault. All rights reserved.".into());
-
-    // Setup event handlers
-    setup_event_handlers(&ui)?;
-
-    info!("✓ UI initialized successfully");
-    info!("=== IronVault Admin Ready ===");
-
-    // Run the UI event loop
-    ui.run()?;
-
-    // Cleanup
-    db.close().await?;
-    info!("✓ Application shutdown complete");
-
-    Ok(())
+// Bypass Slint macro IDE bug
+mod ui {
+    include!(concat!(env!("OUT_DIR"), "/ui/main.rs"));
 }
+use ui::AppWindow;
+use slint::ComponentHandle;
 
-/// Setup event handlers and signal connections
-fn setup_event_handlers(ui: &MainWindow) -> Result<(), Box<dyn std::error::Error>> {
-    // Wire up button callbacks
-    let ui_handle = ui.as_weak();
+fn main() -> Result<(), slint::PlatformError> {
+    println!("[BOOT] Engaging IronVault Core Security...");
     
-    ui.on_login_clicked(move |username, password| {
-        let ui = ui_handle.upgrade().unwrap();
-        // Delegate to controller
-        controllers::handle_login_action(&username, &password, &ui);
+    // 1. Enforce Hardware Anti-Debug Protection
+    ironvault_core::security::enforce_anti_debug();
+    
+    // 2. Generate Irreversible Hardware ID
+    let hwid = ironvault_core::licensing::generate_hwid();
+    println!("[SECURITY] Computed System HWID: {}", hwid);
+
+    // 3. Launch UI
+    let app = AppWindow::new()?;
+    
+    // Inject HWID to UI
+    app.set_hwid_string(format!("HWID: {}", hwid).into());
+    
+    // 4. Handle Secure Login Requests
+    let app_weak = app.as_weak();
+    app.on_request_authentication(move |username, password| {
+        let ui = app_weak.unwrap();
+        
+        match ironvault_db::verify_login(&username, &password) {
+            Ok(session) => {
+                ui.set_login_error("".into());
+                ui.set_current_user_name(session.username.into());
+                ui.set_current_user_role("Super Admin".into());
+                ui.set_last_login(session.last_login.into());
+                ui.set_is_logged_in(true);
+                println!("[AUTH] System Unlocked for {}", session.username);
+            }
+            Err(e) => {
+                ui.set_login_error(e.into());
+            }
+        }
     });
 
-    Ok(())
+    app.run()
 }

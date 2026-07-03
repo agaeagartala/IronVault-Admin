@@ -4,6 +4,8 @@ node_modules/
 # Ignore local environment variables/secrets
 .env
 *.local
+Roadmap.md
+
 
 # Ignore OS-specific files
 Thumbs.db
@@ -18,5 +20,4 @@ build/
 .vscode/
 
 # Ignore Rust-specific files
-target/debug
-
+target/

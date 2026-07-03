@@ -1,9 +1,11 @@
 [package]
 name = "ironvault-ui"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
+#version.workspace = true
+#edition.workspace = true
+#authors.workspace = true
+#license.workspace = true
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
 tokio = { version = "1.35", features = ["full"] }
@@ -17,6 +19,13 @@ chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 env_logger = "0.11"
 thiserror = "1.0"
+#ironvault-core = { path = "../ironvault-core" }
+#ironvault-db = { path = "../ironvault-db" }
+#slint = "1.5"
 
 [dev-dependencies]
 tokio-test = "0.4"
+
+
+[build-dependencies]
+slint-build = "1.5"

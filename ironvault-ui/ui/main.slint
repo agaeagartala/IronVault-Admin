@@ -1,106 +1,93 @@
 // Master window with sidebar + content router
 // Main entry point for the Slint UI
 
-import { Sidebar } from "components/sidebar.slint";
-import { TopBar } from "components/topbar.slint";
-import { LoginView } from "views/login.slint";
-import { RegisterView } from "views/register.slint";
 import { DashboardView } from "views/dashboard.slint";
+import { LoginView } from "views/login.slint";
+import { HorizontalBox, VerticalBox } from "std-widgets.slint";
 
-export component MainWindow {
-    width: 1400px;
-    height: 900px;
-    background: @linear-gradient(180deg, #0a0e27 0%, #1a1f3a 100%);
+export component AppWindow inherits Window {
+    title: "IronVault Control Center";
+    width: 1100px;
+    height: 700px;
+    background: #0B0F19; 
     
-    // Properties exposed to Rust
-    property <string> app_version: "1.0.0";
-    property <string> copyright_text: "© 2024 IronVault";
-    property <string> current_user: "";
-    property <string> user_role: "";
-    property <string> current_view: "login"; // login, register, dashboard
-    property <string> error_message: "";
-    property <string> notification: "";
-    property <string> login_error: "";
+    in-out property <bool> is_logged_in: false;
+    in-out property <string> current_user_name: "Guest";
+    in-out property <string> current_user_role: "Unverified";
+    in-out property <string> last_login: "--";
+    in-out property <string> hwid_string: "HWID: LOADING...";
+    in-out property <string> login_error: "";
     
-    // Callbacks for Rust
-    callback login_clicked(string, string); // username, password
-    callback register_clicked(string, string, string); // name, email, password
-    callback logout_clicked();
-    callback navigate_view(string);
+    callback request_authentication(string, string);
     
-    // Main horizontal layout
-    HorizontalLayout {
-        // Sidebar (only visible when logged in)
-        if current_user != "" {
-            Sidebar {
-                app_version: root.app_version;
-                copyright_text: root.copyright_text;
-                current_view: root.current_view;
-                navigate_view(view) => {
-                    root.current_view = view;
-                    root.navigate_view(view);
-                }
-                logout => {
-                    root.logout_clicked();
-                }
+    if !is_logged_in : LoginView {
+        error_message: root.login_error;
+        login_requested(user, pass) => { root.request_authentication(user, pass); }
+    }
+    
+    if is_logged_in : HorizontalBox {
+        padding: 0px;
+        spacing: 0px;
+        
+        // Sidebar Navigation
+        Rectangle {
+            width: 250px;
+            background: #111827;
+            border-right-width: 1px;
+            border-color: #1F2937;
+            
+            VerticalBox {
+                padding: 20px;
+                spacing: 15px;
+                
+                Text { text: "IRONVAULT"; font-size: 24px; font-weight: 800; color: #38BDF8; }
+                Text { text: "v2.1.0-ENTERPRISE"; font-size: 10px; color: #6B7280; }
+                Text { text: root.hwid_string; font-size: 9px; color: #4B5563; }
+                
+                Rectangle { height: 20px; } // Spacer
+                
+                Rectangle { height: 40px; background: #1E293B; border-radius: 6px; Text { text: "Dashboard"; color: white; x: 15px; vertical-alignment: center;} }
+                Rectangle { height: 40px; Text { text: "Database Sync"; color: #9CA3AF; x: 15px; vertical-alignment: center;} }
+                Rectangle { height: 40px; Text { text: "System Audit Logs"; color: #9CA3AF; x: 15px; vertical-alignment: center;} }
+                
+                Rectangle {} // Pushes copyright to bottom
+                
+                Text { text: "© 2026 IronVault Systems"; font-size: 10px; color: #4B5563; }
             }
         }
         
-        // Content area
-        VerticalLayout {
-            spacing: 0;
+        // Main Content Area
+        VerticalBox {
+            padding: 0px;
+            spacing: 0px;
             
-            // Top bar (only visible when logged in)
-            if current_user != "" {
-                TopBar {
-                    user_name: root.current_user;
-                    user_role: root.user_role;
-                    logout => {
-                        root.logout_clicked();
+            // Top Bar
+            Rectangle {
+                height: 70px;
+                background: #0B0F19;
+                border-bottom-width: 1px;
+                border-color: #1F2937;
+                
+                HorizontalBox {
+                    padding-left: 20px;
+                    padding-right: 20px;
+                    alignment: space-between;
+                    
+                    Text { text: "Operations Console"; font-size: 18px; color: white; vertical-alignment: center; }
+                    
+                    HorizontalBox {
+                        spacing: 15px;
+                        VerticalBox {
+                            alignment: center;
+                            Text { text: root.current_user_name; color: white; font-weight: 700; horizontal-alignment: right; }
+                            Text { text: root.current_user_role + " | Last: " + root.last_login; color: #38BDF8; font-size: 11px; horizontal-alignment: right; }
+                        }
+                        Rectangle { width: 40px; height: 40px; border-radius: 20px; background: #38BDF8; y: 15px; } // Avatar
                     }
                 }
             }
             
-            // Main content router
-            VerticalLayout {
-                if current_view == "login" {
-                    LoginView {
-                        login_clicked(username, password) => {
-                            root.login_clicked(username, password);
-                        }
-                        navigate_register => {
-                            root.current_view = "register";
-                        }
-                    }
-                } else if current_view == "register" {
-                    RegisterView {
-                        register_clicked(name, email, password) => {
-                            root.register_clicked(name, email, password);
-                        }
-                        navigate_login => {
-                            root.current_view = "login";
-                        }
-                    }
-                } else if current_view == "dashboard" {
-                    DashboardView {
-                        // Pass any needed data to dashboard
-                    }
-                }
-            }
-            
-            // Error notification
-            if error_message != "" {
-                Rectangle {
-                    background: #d32f2f;
-                    height: 40px;
-                    Text {
-                        text: root.error_message;
-                        color: white;
-                        vertical_alignment: center;
-                        horizontal_alignment: center;
-                    }
-                }
-            }
+            DashboardView {}
         }
     }
 }

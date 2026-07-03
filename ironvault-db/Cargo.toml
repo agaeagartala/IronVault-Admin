@@ -1,11 +1,14 @@
 [package]
 name = "ironvault-db"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
+# version.workspace = true
+# edition.workspace = true
+# authors.workspace = true
+# license.workspace = true
+version = "0.1.0"
+edition = "2021"
 
 [dependencies]
+ironvault-core = { path = "../ironvault-core" }
 tokio = { version = "1.35", features = ["full"] }
 sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "postgres", "uuid", "chrono", "json"] }
 postgres = "0.19"

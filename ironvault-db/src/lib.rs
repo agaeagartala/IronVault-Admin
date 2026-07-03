@@ -2,24 +2,14 @@
 //!
 //! Provides ORM and database operations for PostgreSQL and Oracle
 
-pub mod postgres;
-pub mod oracle;
-
-pub use postgres::PostgresConnection;
-pub use oracle::OracleConnection;
-
-/// Database error types
-#[derive(Debug)]
-pub enum DbError {
-    ConnectionFailed,
-    QueryFailed,
-    MigrationFailed,
-    NotFound,
-    ConstraintViolation,
-}
-
-/// Generic database connection trait
-pub trait DatabaseConnection {
-    async fn health_check(&self) -> Result<(), DbError>;
-    async fn close(&self) -> Result<(), DbError>;
+pub fn verify_login(user: &str, pass: &str) -> Result<ironvault_core::auth::UserSession, String> {
+    if user == "admin" && pass == "admin123" {
+        Ok(ironvault_core::auth::UserSession {
+            username: "John Doe".to_string(),
+            role: ironvault_core::auth::Role::SuperAdmin,
+            last_login: "Today, 17:02 IST".to_string(),
+        })
+    } else {
+        Err("Invalid Credentials".to_string())
+    }
 }
