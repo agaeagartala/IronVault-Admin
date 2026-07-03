@@ -6,8 +6,23 @@
 //! - Operator: Execute approved actions
 //! - Viewer: Read-only access
 
-#[derive(Debug, Clone, PartialEq)]
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Role { SuperAdmin, Admin, Operator, Viewer }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct User {
+    pub username: String,
+    pub role: Role,
+    pub last_login: String,
+}
+
+pub struct AuthManager;
+
+impl AuthManager {
+    pub fn new() -> Self { Self }
+}
 
 pub struct UserSession {
     pub username: String,

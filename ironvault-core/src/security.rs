@@ -5,12 +5,22 @@
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Diagnostics::Debug::IsDebuggerPresent;
 
-pub fn enforce_anti_debug() {
-    #[cfg(target_os = "windows")]
-    unsafe {
-        if IsDebuggerPresent() != 0 {
-            println!("[SECURITY_FAULT] Unauthorized debugger detected. Self-terminating.");
-            std::process::exit(1); // Hard crash
+pub struct SecurityValidator;
+
+impl SecurityValidator {
+    pub fn new() -> Self { Self }
+    
+    pub fn enforce_anti_debug() {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            if IsDebuggerPresent() != 0 {
+                println!("[SECURITY_FAULT] Unauthorized debugger detected. Self-terminating.");
+                std::process::exit(1);
+            }
         }
     }
+}
+
+pub fn enforce_anti_debug() {
+    SecurityValidator::enforce_anti_debug();
 }

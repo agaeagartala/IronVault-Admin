@@ -2,15 +2,18 @@
 //!
 //! Re-export commonly-used components from submodules.
 
-pub mod audit;
+// Declare all active modules in the core folder
 pub mod auth;
-pub mod crypto;
-pub mod licensing;
 pub mod security;
+pub mod licensing;
+pub mod audit;
+pub mod crypto;
 
-// Re-export commonly used types for downstream crates
+// Export the specific structs requested by your architecture
 pub use security::SecurityValidator;
 pub use licensing::LicenseManager;
-pub use auth::{AuthManager, User, Role};
+pub use auth::{AuthManager, User};
+
+// Re-export audit and cryptographic engines cleanly to the workspace
 pub use audit::AuditLogger;
 pub use crypto::{Encryptor, Decryptor, EncryptedPayload, CryptoError};
