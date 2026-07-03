@@ -3,11 +3,10 @@
 //! Initializes the Slint UI framework and establishes connections
 //! to the core security and database layers
 
-// Bypass Slint macro IDE bug
-mod ui {
-    include!(concat!(env!("OUT_DIR"), "/ui/main.rs"));
-}
-use ui::AppWindow;
+// Reverted back to the native slint macro to fix the rust-analyzer macro-error completely
+
+slint::include_modules!();
+
 use slint::ComponentHandle;
 
 fn main() -> Result<(), slint::PlatformError> {
@@ -34,10 +33,13 @@ fn main() -> Result<(), slint::PlatformError> {
         match ironvault_db::verify_login(&username, &password) {
             Ok(session) => {
                 ui.set_login_error("".into());
-                ui.set_current_user_name(session.username.into());
+                
+                // FIXED: Use .clone() so session ownership is preserved for the log statement
+                ui.set_current_user_name(session.username.clone().into());
                 ui.set_current_user_role("Super Admin".into());
                 ui.set_last_login(session.last_login.into());
                 ui.set_is_logged_in(true);
+                
                 println!("[AUTH] System Unlocked for {}", session.username);
             }
             Err(e) => {

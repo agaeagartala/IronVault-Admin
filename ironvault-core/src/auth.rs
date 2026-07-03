@@ -13,6 +13,7 @@ pub enum Role { SuperAdmin, Admin, Operator, Viewer }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
+    pub id: String,
     pub username: String,
     pub role: Role,
     pub last_login: String,

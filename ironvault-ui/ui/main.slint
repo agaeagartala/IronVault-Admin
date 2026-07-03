@@ -29,12 +29,18 @@ export component AppWindow inherits Window {
         padding: 0px;
         spacing: 0px;
         
-        // Sidebar Navigation
+        // Sidebar Navigation Container
         Rectangle {
             width: 250px;
             background: #111827;
-            border-right-width: 1px;
-            border-color: #1F2937;
+            
+            // Replaced border-right-width with an explicit divider line
+            Rectangle {
+                x: parent.width - 1px;
+                width: 1px;
+                height: parent.height;
+                background: #1F2937;
+            }
             
             VerticalBox {
                 padding: 20px;
@@ -44,7 +50,7 @@ export component AppWindow inherits Window {
                 Text { text: "v2.1.0-ENTERPRISE"; font-size: 10px; color: #6B7280; }
                 Text { text: root.hwid_string; font-size: 9px; color: #4B5563; }
                 
-                Rectangle { height: 20px; } // Spacer
+                Rectangle { height: 20px; } 
                 
                 Rectangle { height: 40px; background: #1E293B; border-radius: 6px; Text { text: "Dashboard"; color: white; x: 15px; vertical-alignment: center;} }
                 Rectangle { height: 40px; Text { text: "Database Sync"; color: #9CA3AF; x: 15px; vertical-alignment: center;} }
@@ -61,12 +67,18 @@ export component AppWindow inherits Window {
             padding: 0px;
             spacing: 0px;
             
-            // Top Bar
+            // Top Header Bar
             Rectangle {
                 height: 70px;
                 background: #0B0F19;
-                border-bottom-width: 1px;
-                border-color: #1F2937;
+                
+                // Replaced border-bottom-width with an explicit divider line
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    width: parent.width;
+                    background: #1F2937;
+                }
                 
                 HorizontalBox {
                     padding-left: 20px;
