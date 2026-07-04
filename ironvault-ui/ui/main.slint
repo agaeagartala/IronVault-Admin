@@ -2,195 +2,232 @@
 // Main entry point for the Slint UI
 
 import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
-import { LoginView } from "views/login.slint";
+
+export struct UserData {
+    username: string,
+    role: string,
+    last_login: string,
+}
 
 export component AppWindow inherits Window {
-    title: "IRONVAULT // ADMINISTRATIVE CONTROL TERMINAL";
-    width: 1024px;
-    height: 720px;
-    
-    in-out property <bool> is_logged_in: false;
-    in-out property <string> login_error: "";
-    in-out property <string> hwid_string: "HWID: FETCHING...";
-    
+    title: "IronVault Operator Administration Interface Engine";
+    width: 980px;
+    height: 640px;
+    background: #0B0F19;
+
+    in-out property <string> hwid_string: "HWID: UNKNOWN";
     in-out property <string> current_user_name: "GUEST";
     in-out property <string> current_user_role: "UNAUTHORIZED";
     in-out property <string> last_login: "NEVER";
+    in-out property <bool> is_logged_in: false;
+    in-out property <string> active_tab: "overview";
+
+    in-out property <string> captcha_q_main: "0 + 0";
+    in-out property <string> captcha_a_main: "0";
+    in-out property <string> login_error: "";
 
     in-out property <string> pending_notification_name: "NONE";
-    in-out property <string> polling_error_msg: ""; 
-    
-    in-out property <string> captcha_q_main: "";
-    in-out property <string> captcha_a_main: "";
-    
-    in-out property <string> active_tab: "overview";
+    in-out property <string> polling_error_msg: "";
+
+    in-out property <[UserData]> active_users_list: [];
 
     callback request_authentication(string, string);
     callback request_registration(string, string);
     callback approve_pending_operator(string, string);
-    callback deny_pending_operator(string); 
+    callback deny_pending_operator(string);
     callback request_logout();
 
-    background: #0B0F19;
+    callback load_users_list();
+    callback update_user_role(string, string);
+    callback ban_user(string);
 
     HorizontalBox {
-        spacing: 0; padding: 0;
+        padding: 0px; spacing: 0px;
 
-        if root.is_logged_in : Rectangle {
-            width: 240px; background: #111827; border-width: 1px; border-color: #1F2937;
+        if (root.is_logged_in) : Rectangle {
+            width: 240px;
+            background: #111827;
+            border-width: 1px;
+            border-color: #1F2937;
 
             VerticalBox {
-                padding: 20px; spacing: 20px; alignment: start;
-
-                VerticalBox {
-                    spacing: 4px;
-                    HorizontalBox {
-                        alignment: start; spacing: 8px;
-                        Text { text: "🛡️ IRONVAULT"; font-size: 18px; font-weight: 800; color: #38BDF8; vertical-alignment: center; }
-                    }
-                    Text { text: "Admin Infrastructure v0.1.0"; font-size: 10px; color: #6B7280; }
-                }
-
-                Rectangle { height: 2px; background: #1F2937; }
-
-                VerticalBox {
-                    spacing: 5px;
-                    Text { text: "OPERATOR PROFILE:"; font-size: 10px; color: #9CA3AF; font-weight: 700; }
-                    Text { text: root.current_user_name; font-size: 14px; font-weight: 600; color: #F3F4F6; }
-                    Text { text: "Role: " + root.current_user_role; font-size: 11px; color: #10B981; }
-                }
-
-                Rectangle { height: 2px; background: #1F2937; }
-
-                Button { text: "📊 System Overview"; clicked => { root.active_tab = "overview"; } }
+                padding: 20px; spacing: 15px; alignment: start;
                 
-                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Superadmin" || root.current_user_role == "superadmin") : Button { 
-                    text: "🔔 Approval Queue"; 
-                    clicked => { root.active_tab = "approvals"; } 
-                }
-
-                Rectangle { vertical-stretch: 1; } 
+                Text { text: "IRONVAULT // ADMIN"; font-size: 16px; font-weight: 900; color: #3B82F6; }
+                Text { text: root.hwid_string; font-size: 10px; color: #4B5563; }
+                
+                Rectangle { height: 1px; background: #1F2937; }
 
                 Button {
-                    text: "🔓 Terminate Session";
-                    clicked => { root.request_logout(); }
+                    text: "📊 Dashboard Summary";
+                    clicked => { root.active_tab = "overview"; }
+                }
+                
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin") : Button {
+                    text: "🛡️ Operator Requests";
+                    clicked => { root.active_tab = "approvals"; }
                 }
 
-                Rectangle { height: 2px; background: #1F2937; }
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin") : Button {
+                    text: "👥 User Management";
+                    clicked => { root.active_tab = "users"; root.load_users_list(); }
+                }
 
-                VerticalBox {
-                    spacing: 4px;
-                    Text { text: "SECURITY SIGNATURE:"; font-size: 9px; color: #4B5563; font-weight: 700; }
-                    Text { text: root.hwid_string; font-size: 9px; color: #6B7280; wrap: word-wrap; }
+                Rectangle { vertical-stretch: 1; }
+
+                Button {
+                    text: "🚪 Revoke Session";
+                    clicked => { root.request_logout(); }
                 }
             }
         }
 
-        Rectangle {
-            horizontal-stretch: 1;
-            
-            if !root.is_logged_in : LoginView {
-                error_message: root.login_error;
-                captcha_question: root.captcha_q_main;
-                captcha_answer: root.captcha_a_main;
-                login_requested(user, pass) => { root.request_authentication(user, pass); }
-                registration_requested(user, pass) => { root.request_registration(user, pass); }
+        VerticalBox {
+            padding: 30px; spacing: 20px; horizontal-stretch: 1;
+
+            if (!root.is_logged_in) : VerticalBox {
+                alignment: center; spacing: 20px;
+                
+                Text { text: "Access Key Handshake Required"; font-size: 24px; font-weight: 800; color: #F3F4F6; horizontal-alignment: center; }
+                
+                Rectangle {
+                    width: 380px; background: #111827; border-radius: 8px;
+                    border-width: 1px; border-color: #1F2937;
+                    
+                    // FIXED: Moved padding from the parent Rectangle to this layout container element
+                    VerticalBox {
+                        padding: 25px; spacing: 12px;
+                        
+                        Text { text: "OPERATOR ACCESS NAME"; font-size: 11px; color: #9CA3AF; font-weight: 700; }
+                        user_input := LineEdit { placeholder_text: "Operator ID String"; }
+                        
+                        Text { text: "CRYPTOGRAPHIC ACCESS SIGNATURE"; font-size: 11px; color: #9CA3AF; font-weight: 700; }
+                        pass_input := LineEdit { placeholder_text: "Master Secret Sequence"; input-type: password; }
+                        
+                        HorizontalBox {
+                            alignment: space-between;
+                            Text { text: "SOLVE SECURE CHALLENGE: " + root.captcha_q_main; font-size: 11px; color: #E5E7EB; vertical-alignment: center; }
+                            captcha_input := LineEdit { width: 80px; placeholder_text: "Result"; }
+                        }
+
+                        if (root.login_error != "") : Text { text: root.login_error; color: #EF4444; font-size: 12px; wrap: word-wrap; }
+
+                        HorizontalBox {
+                            spacing: 10px;
+                            Button {
+                                text: "Authenticate";
+                                clicked => {
+                                    if (captcha_input.text == root.captcha_a_main) {
+                                        root.request_authentication(user_input.text, pass_input.text);
+                                    } else {
+                                        root.login_error = "Integrity Validation Fault: Challenge failure.";
+                                    }
+                                }
+                            }
+                            Button {
+                                text: "Register Node";
+                                clicked => {
+                                    if (captcha_input.text == root.captcha_a_main) {
+                                        root.request_registration(user_input.text, pass_input.text);
+                                    } else {
+                                        root.login_error = "Integrity Validation Fault: Challenge failure.";
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
-            if root.is_logged_in : VerticalBox {
-                padding: 40px; spacing: 25px;
+            if (root.is_logged_in) : VerticalBox {
+                spacing: 20px;
 
-                if root.active_tab == "overview" : VerticalBox {
-                    spacing: 20px;
-                    VerticalBox {
-                        spacing: 5px;
-                        Text { text: "SYSTEM OPERATIONAL OVERVIEW"; font-size: 22px; font-weight: 800; color: #FFFFFF; }
-                        Text { text: "Live node diagnostics connected to database cluster AsstPro"; font-size: 13px; color: #9CA3AF; }
-                    }
-
-                    HorizontalBox {
-                        spacing: 20px;
-                        Rectangle {
-                            height: 100px; background: #111827; border-radius: 8px; border-width: 1px; border-color: #1F2937;
-                            VerticalBox {
-                                padding: 15px; alignment: center;
-                                Text { text: "DB MATRIX CONNECTION"; font-size: 11px; color: #9CA3AF; font-weight: 700; }
-                                Text { text: "ONLINE // SECURE"; font-size: 18px; color: #10B981; font-weight: 800; }
-                            }
-                        }
-                        Rectangle {
-                            height: 100px; background: #111827; border-radius: 8px; border-width: 1px; border-color: #1F2937;
-                            VerticalBox {
-                                padding: 15px; alignment: center;
-                                Text { text: "INCOMING PENDING REQUESTS"; font-size: 11px; color: #9CA3AF; font-weight: 700; }
-                                Text { text: root.pending_notification_name == "NONE" ? "0 CHANNELS" : "⚠️ ACTIONS REQUIRED"; font-size: 16px; color: root.pending_notification_name == "NONE" ? #6B7280 : #F59E0B; font-weight: 800; }
-                            }
-                        }
-                    }
-
+                if (root.active_tab == "overview") : VerticalBox {
+                    spacing: 15px;
+                    Text { text: "SECURITY COMMAND DASHBOARD"; font-size: 22px; font-weight: 800; color: #FFFFFF; }
+                    
                     Rectangle {
-                        background: #1E293B; border-radius: 8px;
+                        background: #111827; border-radius: 8px; border-width: 1px; border-color: #1F2937;
+                        // FIXED: Moved padding from the parent Rectangle to this layout container element
                         VerticalBox {
-                            padding-left: 20px; padding-right: 20px; padding-top: 20px; padding-bottom: 20px; spacing: 10px;
-                            Text { text: "Welcome Back, Authorized Operator."; font-size: 16px; font-weight: 700; color: #38BDF8; }
-                            Text { text: "The core database abstraction layer has loaded successfully. All access queries and actions performed within this panel will be appended directly to the physical system audit sequence trail table schema logs."; font-size: 13px; color: #E2E8F0; wrap: word-wrap; }
+                            padding: 20px; spacing: 10px;
+                            Text { text: "Active Node Session Diagnostics"; font-size: 14px; font-weight: 700; color: #3B82F6; }
+                            Text { text: "Current Operator Identity: " + root.current_user_name; color: #F3F4F6; }
+                            Text { text: "Assigned Authority Classification: " + root.current_user_role; color: #F3F4F6; }
+                            Text { text: "Last Structural Session Database Binding: " + root.last_login; color: #9CA3AF; }
                         }
                     }
                 }
 
-                if (root.active_tab == "approvals" && (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Superadmin" || root.current_user_role == "superadmin")) : VerticalBox {
-                    spacing: 20px; alignment: start;
+                if (root.active_tab == "approvals") : VerticalBox {
+                    spacing: 15px;
+                    Text { text: "PENDING ACCESS ENTRY ROUTER"; font-size: 22px; font-weight: 800; color: #FFFFFF; }
+                    
+                    Rectangle {
+                        background: #111827; border-radius: 8px; border-width: 1px; border-color: #1F2937;
+                        // FIXED: Moved padding from the parent Rectangle to this layout container element
+                        VerticalBox {
+                            padding: 25px; spacing: 15px;
+                            if (root.pending_notification_name != "NONE") : VerticalBox {
+                                spacing: 12px;
+                                Text { text: "Incoming Authorization Request Intercepted:"; font-size: 14px; color: #F59E0B; font-weight: 700; }
+                                Text { text: "Target Account Name: " + root.pending_notification_name; font-size: 16px; color: #FFFFFF; }
+                                
+                                HorizontalBox {
+                                    spacing: 15px;
+                                    role_selector := LineEdit { text: "Operator"; placeholder_text: "Enter assigned role target"; width: 200px; }
+                                    Button { text: "Grant Authorization"; clicked => { root.approve_pending_operator(root.pending_notification_name, role_selector.text); } }
+                                    Button { text: "Purge Request"; clicked => { root.deny_pending_operator(root.pending_notification_name); } }
+                                }
+                            }
+                            if (root.pending_notification_name == "NONE") : Text { text: "No pending terminal authorization links detected in current cycle buffer."; color: #6B7280; font-italic: true; }
+                        }
+                    }
+                }
 
+                if (root.active_tab == "users") : VerticalBox {
+                    spacing: 20px; alignment: start;
+                    
                     VerticalBox {
-                        spacing: 5px;
-                        Text { text: "PENDING SECURITY ENFORCEMENT QUEUE"; font-size: 22px; font-weight: 800; color: #FFFFFF; }
-                        Text { text: "Review raw device profile entry registration logs and assign roles dynamically"; font-size: 13px; color: #9CA3AF; }
+                        spacing: 4px;
+                        Text { text: "ACTIVE OPERATOR MANAGEMENT MATRIX"; font-size: 22px; font-weight: 800; color: #FFFFFF; }
+                        Text { text: "Live administration node. Revoke clearance tokens or adjust structural roles instantly."; font-size: 13px; color: #9CA3AF; }
                     }
 
                     Rectangle {
-                        width: 550px; background: #111827; border-radius: 10px; border-width: 1px; border-color: #1F2937;
-                        
+                        background: #111827; border-radius: 8px; border-width: 1px; border-color: #1F2937;
                         VerticalBox {
-                            padding: 30px; spacing: 18px;
-
-                            if root.polling_error_msg != "" : Rectangle {
-                                background: #3B0712; border-radius: 6px; height: 50px; border-color: #991B1B; border-width: 1px;
-                                HorizontalBox {
-                                    padding-left: 15px;
-                                    Text { text: "🚨 DATABASE ACCESS EXCEPTION:\n" + root.polling_error_msg; color: #FCA5A5; font-size: 11px; font-weight: 700; vertical-alignment: center; }
-                                }
-                            }
-
-                            if root.pending_notification_name == "NONE" : Text {
-                                text: "🎉 Excellent. All incoming registration requests have been authorized. Operational logs clean.";
-                                color: #10B981; font-size: 14px; wrap: word-wrap;
-                            }
-
-                            if root.pending_notification_name != "NONE" : VerticalBox {
+                            padding: 20px; spacing: 12px;
+                            
+                            HorizontalBox {
                                 spacing: 15px;
-                                Rectangle {
-                                    background: #2D1510; border-radius: 6px; height: 45px;
-                                    VerticalBox {
-                                        alignment: center; padding-left: 15px;
-                                        Text { text: "⚠️ PENDING INTERCEPT FROM OPERATOR: " + root.pending_notification_name; color: #F59E0B; font-weight: 700; }
-                                    }
+                                Text { text: "OPERATOR IDENT"; width: 160px; font-weight: 700; color: #9CA3AF; }
+                                Text { text: "LAST ACCESS LOG"; width: 180px; font-weight: 700; color: #9CA3AF; }
+                                Text { text: "SECURITY PRIVILEGE LEVEL"; width: 160px; font-weight: 700; color: #9CA3AF; }
+                                Text { text: "REVOCATION CONTROL ROUTING"; horizontal-stretch: 1; font-weight: 700; color: #9CA3AF; }
+                            }
+                            
+                            Rectangle { height: 1px; background: #1F2937; }
+
+                            for user in root.active_users_list : HorizontalBox {
+                                padding-top: 4px; padding-bottom: 4px; spacing: 15px;
+                                Text { text: user.username; width: 160px; color: #F3F4F6; vertical-alignment: center; font-weight: 600; }
+                                Text { text: user.last_login; width: 180px; color: #6B7280; font-size: 11px; vertical-alignment: center; }
+                                
+                                role_input := LineEdit { 
+                                    text: user.role; 
+                                    width: 160px; 
                                 }
                                 
-                                VerticalBox {
-                                    spacing: 5px;
-                                    Text { text: "Assign Workspace Privilege Authority Level"; color: #9CA3AF; font-size: 12px; }
-                                    assign_role := LineEdit { text: "Operator"; placeholder-text: "SuperAdmin, Admin, Operator"; }
-                                }
-
                                 HorizontalBox {
-                                    spacing: 12px;
+                                    spacing: 12px; horizontal-stretch: 1;
                                     Button {
-                                        text: "APPROVE PROFILE & ASSIGN ROLE";
-                                        clicked => { root.approve_pending_operator(root.pending_notification_name, assign_role.text); }
+                                        text: "Update Assignment";
+                                        clicked => { root.update_user_role(user.username, role_input.text); }
                                     }
                                     Button {
-                                        text: "❌ REJECT & DENY";
-                                        clicked => { root.deny_pending_operator(root.pending_notification_name); }
+                                        text: "🚨 REVOKE ACCESS (BAN)";
+                                        clicked => { root.ban_user(user.username); }
                                     }
                                 }
                             }

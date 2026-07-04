@@ -5,17 +5,20 @@
 slint::include_modules!();
 
 use slint::ComponentHandle;
+use slint::{ModelRc, VecModel};
 use ironvault_core::audit::AuditLogger;
 use ironvault_db::DbClient;
 use std::sync::Arc;
+use std::rc::Rc;
 use rand::Rng;
 
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     println!("[BOOT] Engaging IronVault Core Security...");
     
-    ironvault_core::security::enforce_anti_debug();
     let hwid = ironvault_core::licensing::generate_hwid();
+    ironvault_core::security::enforce_core_security_checks(&hwid);
+    
     println!("[SECURITY] Computed System HWID: {}", hwid);
 
     let audit_logger = Arc::new(AuditLogger::new("ironvault.audit.log"));
@@ -42,11 +45,8 @@ async fn main() -> Result<(), slint::PlatformError> {
     let mut rng = rand::thread_rng();
     let val1 = rng.gen_range(5..20);
     let val2 = rng.gen_range(2..10);
-    let captcha_q = format!("{} + {}", val1, val2);
-    let captcha_a = (val1 + val2).to_string();
-    
-    app.set_captcha_q_main(captcha_q.into());
-    app.set_captcha_a_main(captcha_a.into());
+    app.set_captcha_q_main(format!("{} + {}", val1, val2).into());
+    app.set_captcha_a_main((val1 + val2).to_string().into());
     app.set_login_error("".into());
 
     // --- REAL-TIME POLLING BACKGROUND TIMEOUT LOOP ---
@@ -75,7 +75,6 @@ async fn main() -> Result<(), slint::PlatformError> {
                                 ui.set_polling_error_msg("".into());
                             }
                             Err(err) => {
-                                println!("[POLLING ERROR]: {}", err);
                                 ui.set_polling_error_msg(err.into());
                                 ui.set_pending_notification_name("NONE".into());
                             }
@@ -115,7 +114,15 @@ async fn main() -> Result<(), slint::PlatformError> {
                         ui.set_active_tab("overview".into());
                     }).unwrap();
 
-                    audit.log_action(&user, "OPERATOR_DB_LOGIN_SUCCESS", "CRITICAL").ok();
+                    // FIXED: Implemented the missing `id` safely, and cast the String into the `Role` enum using `.into()`
+                    let core_user = ironvault_core::User {
+                        id: Default::default(),
+                        username: user.username.clone(),
+                        role: user.role.clone().into(),
+                        last_login: user.last_login.clone(),
+                    };
+
+                    audit.log_action(&core_user, "OPERATOR_DB_LOGIN_SUCCESS", "CRITICAL").ok();
                 }
                 Err(err) => {
                     slint::invoke_from_event_loop(move || {
@@ -201,18 +208,16 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- FIXED: INTERFACE OPERATOR LOG OUT CHANNEL ---
+    // --- INTERFACE OPERATOR LOG OUT CHANNEL ---
     let app_weak_logout = app.as_weak();
     app.on_request_logout(move || {
         if let Some(ui) = app_weak_logout.upgrade() {
-            // Reset state variables back to guest defaults cleanly
             ui.set_is_logged_in(false);
             ui.set_current_user_name("GUEST".into());
             ui.set_current_user_role("UNAUTHORIZED".into());
             ui.set_pending_notification_name("NONE".into());
             ui.set_login_error("".into());
 
-            // Refresh the verification CAPTCHA to prevent session reuse replays
             let mut fresh_rng = rand::thread_rng();
             let v1 = fresh_rng.gen_range(5..20);
             let v2 = fresh_rng.gen_range(2..10);
@@ -221,6 +226,79 @@ async fn main() -> Result<(), slint::PlatformError> {
             
             println!("[SECURITY] Session terminated by user request. Session state scrubbed.");
         }
+    });
+
+    // --- OPERATOR USER MANAGEMENT TAB MATRIX LOGIC ROUTERS ---
+    let app_weak_users = app.as_weak();
+    let db_users_clone = Arc::clone(&db);
+    
+    app.on_load_users_list(move || {
+        let ui_weak = app_weak_users.clone();
+        let db = Arc::clone(&db_users_clone);
+        
+        tokio::spawn(async move {
+            if let Ok(users) = db.get_active_users().await {
+                let mut slint_users = Vec::new();
+                for u in users {
+                    slint_users.push(UserData {
+                        username: u.username.into(),
+                        role: u.role.into(),
+                        last_login: u.last_login.into(),
+                    });
+                }
+                
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        let model = Rc::new(VecModel::from(slint_users));
+                        ui.set_active_users_list(ModelRc::from(model));
+                    }
+                }).unwrap();
+            }
+        });
+    });
+
+    let app_weak_role = app.as_weak();
+    let db_role_clone = Arc::clone(&db);
+
+    app.on_update_user_role(move |target_user, new_role| {
+        let ui_weak = app_weak_role.clone();
+        let db = Arc::clone(&db_role_clone);
+        
+        let admin_name = ui_weak.unwrap().get_current_user_name().to_string();
+        let target_str = target_user.to_string();
+        let role_str = new_role.to_string();
+
+        tokio::spawn(async move {
+            if db.update_user_role(&admin_name, &target_str, &role_str).await.is_ok() {
+                println!("[ADMIN_ACTION] Operator {} updated role for {} to {}", admin_name, target_str, role_str);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        ui.invoke_load_users_list();
+                    }
+                }).unwrap();
+            }
+        });
+    });
+
+    let app_weak_ban = app.as_weak();
+    let db_ban_clone = Arc::clone(&db);
+
+    app.on_ban_user(move |target_user| {
+        let ui_weak = app_weak_ban.clone();
+        let db = Arc::clone(&db_ban_clone);
+        let admin_name = ui_weak.unwrap().get_current_user_name().to_string();
+        let target_str = target_user.to_string();
+
+        tokio::spawn(async move {
+            if db.ban_user(&admin_name, &target_str).await.is_ok() {
+                println!("[SECURITY] Operator {} has BANNED user {}", admin_name, target_str);
+                slint::invoke_from_event_loop(move || {
+                    if let Some(ui) = ui_weak.upgrade() {
+                        ui.invoke_load_users_list();
+                    }
+                }).unwrap();
+            }
+        });
     });
 
     app.run()
