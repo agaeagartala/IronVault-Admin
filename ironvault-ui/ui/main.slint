@@ -3,11 +3,8 @@
 
 import { Button, LineEdit, VerticalBox, HorizontalBox, ScrollView } from "std-widgets.slint";
 
-// --- CUSTOM UI COMPONENTS ---
-
 component NavItem inherits Rectangle {
     in property <string> text;
-    // UPDATED: Changed from a text string emoji to an image path asset pointer
     in property <image> icon_source;
     in property <bool> active;
     in property <color> base_color: #9CA3AF;
@@ -22,17 +19,13 @@ component NavItem inherits Rectangle {
 
     HorizontalBox {
         padding-left: 14px; padding-right: 14px; spacing: 14px;
-        
-        // FIXED: Using a real Image widget instead of Text to avoid Windows font glitches
         Image {
             source: root.icon_source;
             width: 18px;
             height: 18px;
             vertical-alignment: center;
-            // Dynamic color modulation overlay depending on state token
             colorize: root.active ? root.active_color : root.base_color;
         }
-        
         Text { 
             text: root.text; 
             font-size: 14px; 
@@ -48,17 +41,16 @@ export struct UserData {
     username: string,
     role: string,
     last_login: string,
+    full_name: string,
+    designation: string,
+    expires_at: string,
 }
-
-// --- MAIN APPLICATION WINDOW ---
 
 export component AppWindow inherits Window {
     title: "IronVault Operator Administration Console";
     width: 1280px; 
     height: 760px;
     background: #09090B; 
-    
-    // FIXED: Appends your brand application icon to the titlebar framework window natively!
     icon: @image-url("assets/app_icon.png");
 
     in-out property <string> hwid_string: "HWID: UNKNOWN";
@@ -71,6 +63,8 @@ export component AppWindow inherits Window {
     in-out property <string> captcha_q_main: "0 + 0";
     in-out property <string> captcha_a_main: "0";
     in-out property <string> login_error: "";
+    
+    in-out property <bool> is_registration_view: false;
 
     in-out property <string> pending_notification_name: "NONE";
     in-out property <string> polling_error_msg: "";
@@ -78,13 +72,14 @@ export component AppWindow inherits Window {
     in-out property <[UserData]> active_users_list: [];
 
     callback request_authentication(string, string);
-    callback request_registration(string, string);
+    callback request_registration(string, string, string, string, string, string, string);
     callback approve_pending_operator(string, string);
     callback deny_pending_operator(string);
     callback request_logout();
 
     callback load_users_list();
     callback update_user_role(string, string);
+    callback extend_user_lease(string, string, string);
     callback ban_user(string);
 
     HorizontalBox {
@@ -95,7 +90,6 @@ export component AppWindow inherits Window {
             background: #111827;
             border-width: 1px;
             border-color: #1F2937;
-            
             drop-shadow-blur: 15px;
             drop-shadow-color: #00000099;
 
@@ -106,14 +100,12 @@ export component AppWindow inherits Window {
                     spacing: 4px; padding-bottom: 20px;
                     Text { text: "❖ IRONVAULT"; font-size: 18px; font-weight: 900; color: #3B82F6; letter-spacing: 1px; }
                     Text { text: "COMMAND CENTER"; font-size: 10px; font-weight: 700; color: #6B7280; letter-spacing: 2px; }
-                    
                     Rectangle { height: 5px; background: transparent; }
                     Text { text: root.hwid_string; font-size: 9px; color: #4B5563; }
                 }
                 
                 Rectangle { height: 1px; background: #1F2937; }
 
-                // FIXED: Routing directly to absolute local PNG relative source maps
                 NavItem {
                     text: "Dashboard"; icon_source: @image-url("assets/dashboard.png"); 
                     active: root.active_tab == "overview";
@@ -133,10 +125,8 @@ export component AppWindow inherits Window {
                 }
 
                 Rectangle { vertical-stretch: 1; }
-
                 Rectangle { height: 1px; background: #1F2937; }
 
-                // FIXED: Terminate text asset vector path mapping
                 NavItem {
                     text: "Terminate Session"; icon_source: @image-url("assets/logout.png"); 
                     active: false;
@@ -156,7 +146,8 @@ export component AppWindow inherits Window {
                     alignment: center;
                     
                     Rectangle {
-                        width: 420px; 
+                        // FIXED: Dynamically expands to 720px for registration to prevent text field overflow clipping
+                        width: root.is_registration_view ? 720px : 420px; 
                         background: #18181B;
                         border-radius: 12px;
                         border-width: 1px; 
@@ -164,36 +155,84 @@ export component AppWindow inherits Window {
                         drop-shadow-blur: 30px;
                         drop-shadow-color: #000000B3;
                         
+                        // PREMIUM UX: Smoothly animates the width expansion
+                        animate width { duration: 300ms; easing: ease-in-out; }
+
                         VerticalBox {
-                            padding: 40px; spacing: 25px;
+                            padding: 40px; spacing: 20px;
                             
                             VerticalBox {
                                 alignment: center; spacing: 5px;
                                 Text { text: "❖ IRONVAULT"; font-size: 26px; font-weight: 900; color: #3B82F6; horizontal-alignment: center; }
-                                Text { text: "SECURE OPERATOR LOGIN"; font-size: 11px; font-weight: 700; color: #9CA3AF; horizontal-alignment: center; letter-spacing: 2px; }
+                                Text { text: root.is_registration_view ? "NODE INITIALIZATION DEPLOYMENT" : "SECURE OPERATOR LOGIN"; font-size: 11px; font-weight: 700; color: #9CA3AF; horizontal-alignment: center; letter-spacing: 2px; }
                             }
                             
                             Rectangle { height: 1px; background: #27272A; }
 
                             VerticalBox {
-                                spacing: 15px;
+                                spacing: 18px;
                                 
                                 VerticalBox {
-                                    spacing: 5px;
-                                    Text { text: "OPERATOR IDENTITY"; font-size: 11px; color: #9CA3AF; font-weight: 800; }
-                                    user_input := LineEdit { placeholder_text: "Enter operator sequence..."; height: 35px; }
+                                    spacing: 6px;
+                                    Text { text: "OPERATOR IDENTITY NAME"; font-size: 11px; color: #9CA3AF; font-weight: 800; letter-spacing: 0.5px; }
+                                    user_input := LineEdit { placeholder_text: "Enter operator sequence..."; height: 38px; }
                                 }
                                 
                                 VerticalBox {
-                                    spacing: 5px;
-                                    Text { text: "CRYPTOGRAPHIC SIGNATURE"; font-size: 11px; color: #9CA3AF; font-weight: 800; }
-                                    pass_input := LineEdit { placeholder_text: "Enter master secret..."; input-type: password; height: 35px; }
+                                    spacing: 6px;
+                                    Text { text: "CRYPTOGRAPHIC SIGNATURE ACCESS KEY"; font-size: 11px; color: #9CA3AF; font-weight: 800; letter-spacing: 0.5px; }
+                                    pass_input := LineEdit { placeholder_text: "Enter master secret..."; input-type: password; height: 38px; }
+                                }
+
+                                VerticalBox {
+                                    spacing: 16px;
+                                    visible: root.is_registration_view;
+                                    
+                                    HorizontalBox {
+                                        spacing: 12px;
+                                        VerticalBox {
+                                            spacing: 6px; horizontal-stretch: 1;
+                                            Text { text: "FIRST NAME"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                            f_name := LineEdit { placeholder_text: "First"; height: 36px; }
+                                        }
+                                        VerticalBox {
+                                            spacing: 6px; horizontal-stretch: 1;
+                                            Text { text: "MIDDLE NAME"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                            m_name := LineEdit { placeholder_text: "Middle"; height: 36px; }
+                                        }
+                                        VerticalBox {
+                                            spacing: 6px; horizontal-stretch: 1;
+                                            Text { text: "LAST NAME"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                            l_name := LineEdit { placeholder_text: "Last"; height: 36px; }
+                                        }
+                                    }
+
+                                    HorizontalBox {
+                                        spacing: 12px;
+                                        VerticalBox {
+                                            spacing: 6px; horizontal-stretch: 1;
+                                            Text { text: "OFFICIAL DESIGNATION"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                            desig_input := LineEdit { placeholder_text: "e.g., Security Analyst"; height: 36px; }
+                                        }
+                                        VerticalBox {
+                                            spacing: 6px; horizontal-stretch: 1;
+                                            Text { text: "ASSIGNED WORKSPACE SECTION"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                            sec_input := LineEdit { placeholder_text: "e.g., Network Ops"; height: 36px; }
+                                        }
+                                    }
                                 }
                                 
-                                HorizontalBox {
-                                    alignment: space-between;
-                                    Text { text: "SOLVE SECURE CHALLENGE:  " + root.captcha_q_main; font-size: 12px; font-weight: 700; color: #E5E7EB; vertical-alignment: center; }
-                                    captcha_input := LineEdit { width: 90px; height: 35px; placeholder_text: "Result"; }
+                                VerticalBox {
+                                    spacing: 6px;
+                                    Text { text: "SECURITY CHALLENGE VERIFICATION"; font-size: 10px; color: #A1A1AA; font-weight: 800; }
+                                    HorizontalBox {
+                                        spacing: 15px;
+                                        Rectangle {
+                                            background: #27272A; border-radius: 4px; horizontal-stretch: 1; height: 38px;
+                                            Text { text: "Solve Sequence: " + root.captcha_q_main; font-size: 13px; font-weight: 700; color: #E5E7EB; vertical-alignment: center; horizontal-alignment: center; }
+                                        }
+                                        captcha_input := LineEdit { width: 120px; height: 38px; placeholder_text: "Result"; }
+                                    }
                                 }
 
                                 if (root.login_error != "") : Rectangle {
@@ -205,9 +244,10 @@ export component AppWindow inherits Window {
                                 }
 
                                 HorizontalBox {
-                                    spacing: 12px; padding-top: 10px;
-                                    Button {
-                                        text: "Authenticate";
+                                    spacing: 14px; padding-top: 5px;
+                                    
+                                    if (!root.is_registration_view) : Button {
+                                        text: "Login Session"; height: 40px; horizontal-stretch: 1;
                                         clicked => {
                                             if (captcha_input.text == root.captcha_a_main) {
                                                 root.request_authentication(user_input.text, pass_input.text);
@@ -216,14 +256,39 @@ export component AppWindow inherits Window {
                                             }
                                         }
                                     }
-                                    Button {
-                                        text: "Register Node";
+
+                                    if (!root.is_registration_view) : Button {
+                                        text: "Switch to Registration"; height: 40px; horizontal-stretch: 1;
+                                        clicked => { 
+                                            root.is_registration_view = true; 
+                                            root.login_error = "";
+                                        }
+                                    }
+
+                                    if (root.is_registration_view) : Button {
+                                        text: "Submit Registration"; height: 40px; horizontal-stretch: 1;
                                         clicked => {
                                             if (captcha_input.text == root.captcha_a_main) {
-                                                root.request_registration(user_input.text, pass_input.text);
+                                                root.request_registration(
+                                                    user_input.text, 
+                                                    pass_input.text,
+                                                    f_name.text,
+                                                    m_name.text,
+                                                    l_name.text,
+                                                    desig_input.text,
+                                                    sec_input.text
+                                                );
                                             } else {
                                                 root.login_error = "Integrity Validation Fault: Challenge failure.";
                                             }
+                                        }
+                                    }
+
+                                    if (root.is_registration_view) : Button {
+                                        text: "Cancel"; height: 40px; horizontal-stretch: 1;
+                                        clicked => { 
+                                            root.is_registration_view = false; 
+                                            root.login_error = "";
                                         }
                                     }
                                 }
@@ -293,8 +358,8 @@ export component AppWindow inherits Window {
                     
                     VerticalBox {
                         spacing: 8px;
-                        Text { text: "Active Operator Matrix"; font-size: 28px; font-weight: 800; color: #FFFFFF; }
-                        Text { text: "Live administration node. Revoke clearance tokens or adjust structural roles instantly."; font-size: 14px; color: #9CA3AF; }
+                        Text { text: "Active Operator Control Matrix"; font-size: 28px; font-weight: 800; color: #FFFFFF; }
+                        Text { text: "Live administration node. Access leases auto-enforce system lockdowns outside validity parameters."; font-size: 14px; color: #9CA3AF; }
                     }
 
                     Rectangle {
@@ -305,10 +370,12 @@ export component AppWindow inherits Window {
                             padding: 24px; spacing: 0px;
                             
                             HorizontalBox {
-                                padding-bottom: 16px; spacing: 20px;
-                                Text { text: "OPERATOR IDENT"; width: 200px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
-                                Text { text: "LAST ACCESS LOG"; width: 240px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
-                                Text { text: "PRIVILEGE LEVEL"; width: 180px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
+                                padding-bottom: 16px; spacing: 15px;
+                                Text { text: "OPERATOR / NAME"; width: 180px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
+                                Text { text: "DESIGNATION"; width: 140px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
+                                Text { text: "LEASE EXPIRATION"; width: 180px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
+                                Text { text: "ROLE / ASSIGNMENT"; width: 140px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
+                                Text { text: "LEASE EXTEND (DAYS)"; width: 140px; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
                                 Text { text: "ROUTING ACTIONS"; horizontal-stretch: 1; font-size: 12px; font-weight: 800; color: #6B7280; letter-spacing: 1px; }
                             }
                             
@@ -316,31 +383,34 @@ export component AppWindow inherits Window {
                             Rectangle { height: 16px; background: transparent; }
 
                             ScrollView {
-                                width: 100%; 
-                                height: 420px; 
+                                width: 100%; height: 420px; 
                                 
                                 VerticalBox {
                                     spacing: 12px; alignment: start;
                                     
                                     for user in root.active_users_list : HorizontalBox {
-                                        spacing: 20px;
+                                        spacing: 15px;
                                         
-                                        Text { text: "👤 " + user.username; width: 200px; color: #F3F4F6; vertical-alignment: center; font-size: 14px; font-weight: 700; overflow: elide; }
-                                        Text { text: user.last_login; width: 240px; color: #9CA3AF; font-size: 12px; vertical-alignment: center; overflow: elide; }
-                                        
-                                        role_input := LineEdit { 
-                                            text: user.role; 
-                                            width: 180px; height: 34px;
+                                        VerticalBox {
+                                            width: 180px; spacing: 2px; alignment: center;
+                                            Text { text: "👤 " + user.username; color: #F3F4F6; font-size: 14px; font-weight: 700; overflow: elide; }
+                                            Text { text: user.full_name; color: #6B7280; font-size: 11px; font-weight: 600; overflow: elide; }
                                         }
+
+                                        Text { text: user.designation; width: 140px; color: #9CA3AF; font-size: 13px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: user.expires_at; width: 180px; color: (user.expires_at == "LIFETIME" ? #10B981 : #F59E0B); font-size: 12px; vertical-alignment: center; overflow: elide; font-weight: 700; }
+                                        
+                                        role_input := LineEdit { text: user.role; width: 140px; height: 34px; }
+                                        days_input := LineEdit { text: "30"; placeholder_text: "Days"; width: 140px; height: 34px; }
                                         
                                         HorizontalBox {
                                             spacing: 10px; horizontal-stretch: 1; alignment: start;
                                             Button {
-                                                text: "Update"; width: 90px; height: 34px;
-                                                clicked => { root.update_user_role(user.username, role_input.text); }
+                                                text: "Save Lease"; width: 95px; height: 34px;
+                                                clicked => { root.extend_user_lease(user.username, role_input.text, days_input.text); }
                                             }
                                             Button {
-                                                text: "Ban"; width: 70px; height: 34px;
+                                                text: "Ban"; width: 60px; height: 34px;
                                                 clicked => { root.ban_user(user.username); }
                                             }
                                         }

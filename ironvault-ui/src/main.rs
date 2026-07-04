@@ -114,7 +114,6 @@ async fn main() -> Result<(), slint::PlatformError> {
                         ui.set_active_tab("overview".into());
                     }).unwrap();
 
-                    // FIXED: Implemented the missing `id` safely, and cast the String into the `Role` enum using `.into()`
                     let core_user = ironvault_core::User {
                         id: Default::default(),
                         username: user.username.clone(),
@@ -133,22 +132,29 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- REGISTRATION PENDING REQUEST ROUTER ---
+    // --- REGISTRATION REQUEST ROUTER WITH EXTENDED PROFILE ---
     let app_weak_reg = app.as_weak();
     let db_reg_clone = Arc::clone(&db);
     let current_hwid_reg = hwid.clone();
     
-    app.on_request_registration(move |username, password| {
+    app.on_request_registration(move |username, password, first, middle, last, designation, section| {
         let ui_weak = app_weak_reg.clone();
         let db = Arc::clone(&db_reg_clone);
         let target_hwid = current_hwid_reg.clone();
         
+        let f_str = first.to_string();
+        let m_str = middle.to_string();
+        let l_str = last.to_string();
+        let desig_str = designation.to_string();
+        let sec_str = section.to_string();
+        
         tokio::spawn(async move {
-            match db.register_user(&username, &password, &target_hwid).await {
+            match db.register_user(&username, &password, &target_hwid, &f_str, &m_str, &l_str, &desig_str, &sec_str).await {
                 Ok(_) => {
                     slint::invoke_from_event_loop(move || {
                         let ui = ui_weak.unwrap();
-                        ui.set_login_error("Account requested! Awaiting SuperAdmin role assignment.".into());
+                        ui.set_is_registration_view(false);
+                        ui.set_login_error("Registration submitted! Awaiting SuperAdmin verification approval.".into());
                     }).unwrap();
                 }
                 Err(err) => {
@@ -244,6 +250,9 @@ async fn main() -> Result<(), slint::PlatformError> {
                         username: u.username.into(),
                         role: u.role.into(),
                         last_login: u.last_login.into(),
+                        full_name: u.full_name.into(),
+                        designation: u.designation.into(),
+                        expires_at: u.expires_at.into(),
                     });
                 }
                 
@@ -257,20 +266,21 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_role = app.as_weak();
-    let db_role_clone = Arc::clone(&db);
+    // --- EXTEND ACCESS LEASE AND ASSIGN PRIVILEGE ---
+    let app_weak_lease = app.as_weak();
+    let db_lease_clone = Arc::clone(&db);
 
-    app.on_update_user_role(move |target_user, new_role| {
-        let ui_weak = app_weak_role.clone();
-        let db = Arc::clone(&db_role_clone);
+    app.on_extend_user_lease(move |target_user, new_role, days_string| {
+        let ui_weak = app_weak_lease.clone();
+        let db = Arc::clone(&db_lease_clone);
         
-        let admin_name = ui_weak.unwrap().get_current_user_name().to_string();
         let target_str = target_user.to_string();
         let role_str = new_role.to_string();
+        let days_valid: i32 = days_string.to_string().parse().unwrap_or(30);
 
         tokio::spawn(async move {
-            if db.update_user_role(&admin_name, &target_str, &role_str).await.is_ok() {
-                println!("[ADMIN_ACTION] Operator {} updated role for {} to {}", admin_name, target_str, role_str);
+            if db.update_user_lease(&target_str, &role_str, days_valid).await.is_ok() {
+                println!("[SECURITY] Access lease updated for operator {}: Assigned to {}, extended by {} days.", target_str, role_str, days_valid);
                 slint::invoke_from_event_loop(move || {
                     if let Some(ui) = ui_weak.upgrade() {
                         ui.invoke_load_users_list();
