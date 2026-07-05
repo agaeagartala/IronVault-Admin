@@ -5,7 +5,7 @@ import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { RegisterView, RegisterFormFields } from "views/register.slint";
 
-// --- UPGRADED PREMIUM NAV ITEM ---
+// --- UPGRADED ANIMATED NAV ITEM ---
 component NavItem inherits Rectangle {
     in property <string> text;
     in property <image> icon_source;
@@ -16,7 +16,7 @@ component NavItem inherits Rectangle {
     height: 44px;
     border-radius: 10px;
     
-    // Smooth background hover and active state transitions
+    // Smooth background transitions
     background: ta.pressed ? Theme.bg-card-hover : (ta.has-hover ? Theme.bg-card : (active ? #00E5FF1A : transparent));
     border-width: active ? 1px : 0px;
     border-color: Theme.brand-primary;
@@ -24,21 +24,30 @@ component NavItem inherits Rectangle {
     animate background { duration: 150ms; }
 
     HorizontalLayout {
-        // Perfect mathematical centering when collapsed
-        padding-left: root.collapsed ? 10px : 14px;
-        padding-right: root.collapsed ? 10px : 14px;
+        padding-left: root.collapsed ? 0px : 14px;
+        padding-right: root.collapsed ? 0px : 14px;
         alignment: root.collapsed ? LayoutAlignment.center : LayoutAlignment.start;
-        spacing: 16px;
+        spacing: root.collapsed ? 0px : 16px;
         
         VerticalLayout {
             alignment: center;
-            Image {
-                source: root.icon_source;
-                width: 22px; height: 22px;
-                image-fit: contain; 
+            
+            // Container ensures layout doesn't shift when icon expands
+            Rectangle {
+                width: 26px; height: 26px;
                 
-                opacity: root.active ? 1.0 : 0.6;
-                animate opacity { duration: 200ms; }
+                Image {
+                    source: root.icon_source;
+                    // Slint-native scaling: animate width/height directly
+                    width: ta.has-hover ? 25px : 22px;
+                    height: ta.has-hover ? 25px : 22px;
+                    image-fit: contain; 
+                    opacity: root.active ? 1.0 : (ta.has-hover ? 0.9 : 0.6);
+                    
+                    animate opacity { duration: 150ms; }
+                    animate width { duration: 120ms; easing: ease-in-out; }
+                    animate height { duration: 120ms; easing: ease-in-out; }
+                }
             }
         }
         
@@ -124,7 +133,7 @@ export component AppWindow inherits Window {
             VerticalLayout {
                 padding: 16px; spacing: 10px; alignment: start;
                 
-                // --- THE NEW LOGO MASTER HEADER ---
+                // --- THE LOGO MASTER HEADER WITH ACCENT ANIMATION ---
                 HorizontalLayout {
                     alignment: root.sidebar_collapsed ? LayoutAlignment.center : LayoutAlignment.start;
                     padding-bottom: 16px;
@@ -136,11 +145,16 @@ export component AppWindow inherits Window {
                         background: logo_ta.has-hover ? Theme.bg-card : transparent;
                         animate background { duration: 150ms; }
                         
+                        // USER EXPERIENCE ANIMATION: Dynamic sizing instead of scale
                         Image {
                             source: @image-url("assets/app_icon.png");
-                            width: 24px; height: 24px;
+                            width: logo_ta.has-hover ? 26px : 24px;
+                            height: logo_ta.has-hover ? 26px : 24px;
                             image-fit: contain;
+                            animate width { duration: 100ms; }
+                            animate height { duration: 100ms; }
                         }
+
                         logo_ta := TouchArea {
                             clicked => { root.sidebar_collapsed = !root.sidebar_collapsed; }
                         }
@@ -168,14 +182,14 @@ export component AppWindow inherits Window {
                     clicked => { root.active_tab = "overview"; }
                 }
                 
-                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin") : NavItem {
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Super Admin") : NavItem {
                     text: "Access Requests"; icon_source: @image-url("assets/requests.png"); 
                     active: root.active_tab == "approvals";
                     collapsed: root.sidebar_collapsed;
                     clicked => { root.active_tab = "approvals"; }
                 }
 
-                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin") : NavItem {
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Super Admin") : NavItem {
                     text: "Operator Matrix"; icon_source: @image-url("assets/matrix.png"); 
                     active: root.active_tab == "users";
                     collapsed: root.sidebar_collapsed;
@@ -209,7 +223,7 @@ export component AppWindow inherits Window {
                     Rectangle {
                         width: root.auth_screen_state == "register" ? 680px : 440px; 
                         background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
-                        drop-shadow-blur: 40px; drop-shadow-color: #00E5FF1A; // Neon cyan glow on the gateway
+                        drop-shadow-blur: 40px; drop-shadow-color: #00E5FF1A; 
                         animate width { duration: 250ms; easing: ease-in-out; }
 
                         VerticalLayout {
@@ -399,7 +413,6 @@ export component AppWindow inherits Window {
                                 Text { text: "ROUTING ACTIONS"; horizontal-stretch: 1; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
                             }
                             
-                            // FIXED: Replaced invalid margin with a clean spacer rectangle
                             Rectangle { height: 1px; background: Theme.border-color; }
                             Rectangle { height: 16px; }
 
@@ -409,7 +422,6 @@ export component AppWindow inherits Window {
                                 VerticalLayout {
                                     spacing: 12px; alignment: start; padding-bottom: 20px;
                                     
-                                    // --- THE NEW CARD-BASED GRID LIST ---
                                     for user in root.active_users_list : Rectangle {
                                         height: 64px;
                                         border-radius: 10px;
@@ -417,7 +429,6 @@ export component AppWindow inherits Window {
                                         border-width: 1px;
                                         border-color: row_ta.has-hover ? Theme.brand-primary : Theme.border-dark;
                                         
-                                        // Subtle hover elevation glow
                                         drop-shadow-blur: row_ta.has-hover ? 12px : 0px;
                                         drop-shadow-color: #00E5FF1A; 
                                         
