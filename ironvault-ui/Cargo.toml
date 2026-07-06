@@ -8,8 +8,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-tokio = { version = "1.35", features = ["full"] }
-slint = { version = "1.5", features = ["backend-winit", "renderer-skia"] }
+tokio = { version = "1.37", features = ["full"] }
+slint = { version = "1.8", features = ["backend-winit", "renderer-skia"] }
 ironvault-core = { path = "../ironvault-core" }
 ironvault-db = { path = "../ironvault-db" }
 serde = { version = "1.0", features = ["derive"] }
@@ -18,11 +18,12 @@ uuid = { version = "1.6", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
 log = "0.4"
 env_logger = "0.11"
-thiserror = "1.0"
+thiserror = "2.0.18"
+
 
 # ADDED: Required for generating runtime verification factors (CAPTCHA)
 rand = "0.8" 
-
+sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
 
 
 [dev-dependencies]
