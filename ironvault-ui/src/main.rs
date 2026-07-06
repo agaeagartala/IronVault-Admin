@@ -2,6 +2,8 @@
 //! Initializes the Slint UI framework and establishes connections
 //! to the core security and database layers
 
+//! IronVault Admin UI - Bootstrapper & Main Thread
+
 slint::include_modules!();
 use slint::ComponentHandle;
 use slint::{ModelRc, VecModel};
@@ -21,66 +23,36 @@ async fn main() -> Result<(), slint::PlatformError> {
     println!("[SECURITY] Computed System HWID: {}", hwid);
     let audit_logger = Arc::new(AuditLogger::new("ironvault.audit.log"));
 
-    // =========================================================================
-    // STAGE 1: POSTGRESQL PRIMARY CONNECTION
-    // =========================================================================
-    println!("[PGSQL] Connecting to data target host server cluster... ");
-    let db = match DbClient::connect_with_credentials(
-        "localhost",
-        5432,
-        "AsstPro",
-        "egpf_app_user",
-        "P@ssw()rd123",
-    ).await {
+    // --- 1. POSTGRESQL PRIMARY CONNECTION ---
+    println!("[PGSQL] Connecting to security target host server cluster... ");
+    let db = match DbClient::connect_with_credentials("localhost", 5432, "AsstPro", "egpf_app_user", "P@ssw()rd123").await {
         Ok(client) => Arc::new(client),
-        Err(err) => {
-            eprintln!("[FATAL DATABASE ACCESS ERROR]: {}", err);
-            std::process::exit(1);
-        }
+        Err(err) => { eprintln!("[FATAL DATABASE ACCESS ERROR]: {}", err); std::process::exit(1); }
     };
-    println!("[SUCCESS] Database connections established. Schemas bound safely.");
 
-    // =========================================================================
-    // STAGE 2: ORACLE 11g LEGACY INFRASTRUCTURE
-    // =========================================================================
-    println!("[ORACLE 11g] Spawning integration connection pipeline to target network infrastructure...");
-    let oracle_client = match OracleConnection::new("gpffp/gpffp@192.168.100.247:1521/db11g") {
+    // --- 2. ORACLE MULTI-NODE INFRASTRUCTURE MATRIX ---
+    println!("[ORACLE ENGINES] Spawning secure connection pools to 7 distinct schemas...");
+    let oracle_client = match OracleConnection::new() {
         Ok(client) => {
-            println!("[SUCCESS] Oracle 11g legacy connection pool initialized.");
+            println!("[SUCCESS] Oracle concurrent server pools initialized successfully.");
             Arc::new(client)
         },
-        Err(e) => {
-            eprintln!("[FATAL] Oracle connection engine failed to bind parameters: {:?}", e);
-            std::process::exit(1);
-        }
+        Err(e) => { eprintln!("[FATAL] Oracle matrix allocation failure: {:?}", e); std::process::exit(1); }
     };
 
-    // =========================================================================
-    // STAGE 3: DETACH BACKGROUND HANDSHAKE
-    // =========================================================================
+    // --- 3. BACKGROUND HEALTH DIAGNOSTICS ---
     let oracle_clone = Arc::clone(&oracle_client);
     tokio::spawn(async move {
-        println!("[DIAGNOSTIC] Testing link visibility to remote node at 192.168.100.247...");
+        println!("[DIAGNOSTIC] Testing link visibility to remote nodes...");
         tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-        match oracle_clone.health_check().await {
-            Ok(()) => {
-                println!("[SUCCESS] Handshake verified with Oracle 11g via DUAL query engine.");
-                if let Ok(version) = oracle_clone.validate_version().await {
-                    println!("[INFO] Remote system matrix: {}", version);
-                }
-                println!("[ORACLE LINK] Operational readiness confirmed. Awaiting terminal commands...");
-            },
-            Err(e) => {
-                eprintln!("[ERROR] Remote Oracle database server is currently unreachable!");
-                eprintln!("[DETAILS] {:?}", e);
-            }
+        if let Err(e) = oracle_clone.health_check().await {
+            eprintln!("[ERROR] One or more Oracle target databases are unreachable! Details: {:?}", e);
+        } else {
+            println!("[ORACLE LINKS] Operational readiness confirmed across all schemas.");
         }
     });
 
-    // =========================================================================
-    // STAGE 4: INITIALIZE SLINT UI ENGINE & CONTROLLER WIREUP
-    // =========================================================================
+    // --- 4. UI ENGINE INITIALIZATION ---
     let app = AppWindow::new()?;
     app.set_hwid_string(format!("HWID: {}", hwid).into());
     
@@ -92,7 +64,7 @@ async fn main() -> Result<(), slint::PlatformError> {
     app.set_login_error("".into());
     app.set_auth_screen_state("landing".into());
 
-    // --- REAL-TIME POLLING BACKGROUND TIMEOUT LOOP ---
+    // --- BACKGROUND POLLING: PENDING APPROVALS ---
     let app_weak_poll = app.as_weak();
     let db_poll_clone = Arc::clone(&db);
     tokio::spawn(async move {
@@ -108,18 +80,9 @@ async fn main() -> Result<(), slint::PlatformError> {
                     
                     if ui.get_is_logged_in() && is_superadmin {
                         match db_result {
-                            Ok(Some(pending_name)) => {
-                                ui.set_pending_notification_name(pending_name.into());
-                                ui.set_polling_error_msg("".into());
-                            }
-                            Ok(None) => {
-                                ui.set_pending_notification_name("NONE".into());
-                                ui.set_polling_error_msg("".into());
-                            }
-                            Err(err) => {
-                                ui.set_polling_error_msg(err.into());
-                                ui.set_pending_notification_name("NONE".into());
-                            }
+                            Ok(Some(pending_name)) => ui.set_pending_notification_name(pending_name.into()),
+                            Ok(None) => ui.set_pending_notification_name("NONE".into()),
+                            Err(_) => ui.set_pending_notification_name("NONE".into()),
                         }
                     }
                 }
@@ -127,7 +90,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- AUTHENTICATION DISPATCHER ---
+    // --- UI CALLBACK: AUTHENTICATION ---
     let app_weak_login = app.as_weak();
     let db_login_clone = Arc::clone(&db);
     let audit_login_clone = Arc::clone(&audit_logger);
@@ -156,24 +119,15 @@ async fn main() -> Result<(), slint::PlatformError> {
                         ui.set_active_tab("overview".into());
                     }).unwrap();
                     
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: user.username.clone(),
-                        role: user.role.clone().into(),
-                        last_login: user.last_login.clone(),
-                    };
+                    let core_user = ironvault_core::auth::User { id: Default::default(), username: user.username.clone(), role: user.role.clone().into(), last_login: user.last_login.clone() };
                     audit.log_action(&core_user, "OPERATOR_DB_LOGIN_SUCCESS", "CRITICAL").ok();
                 }
-                Err(err) => {
-                    slint::invoke_from_event_loop(move || {
-                        ui_weak.unwrap().set_login_error(err.into());
-                    }).unwrap();
-                }
+                Err(err) => slint::invoke_from_event_loop(move || { ui_weak.unwrap().set_login_error(err.into()); }).unwrap(),
             }
         });
     });
 
-    // --- STRUCT-BASED REGISTRATION PROCESSOR ---
+    // --- UI CALLBACK: REGISTRATION ---
     let app_weak_reg = app.as_weak();
     let db_reg_clone = Arc::clone(&db);
     let current_hwid_reg = hwid.clone();
@@ -182,224 +136,119 @@ async fn main() -> Result<(), slint::PlatformError> {
         let ui_weak = app_weak_reg.clone();
         let db = Arc::clone(&db_reg_clone);
         let target_hwid = current_hwid_reg.clone();
-        
-        let f_str = first.to_string();
-        let m_str = middle.to_string();
-        let l_str = last.to_string();
-        let desig_str = designation.to_string();
-        let sec_str = section.to_string();
+        let (f_str, m_str, l_str, desig_str, sec_str) = (first.to_string(), middle.to_string(), last.to_string(), designation.to_string(), section.to_string());
         
         tokio::spawn(async move {
             match db.register_user(&username, &password, &target_hwid, &f_str, &m_str, &l_str, &desig_str, &sec_str).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_auth_screen_state("landing".into());
-                        ui.set_login_error("Registration submitted! Awaiting SuperAdmin verification approval.".into());
-                        
-                        ui.set_form_user("".into());
-                        ui.set_form_pass("".into());
-                        ui.set_form_captcha_login("".into());
-                        ui.set_registration_fields(RegisterFormFields::default());
-                    }).unwrap();
-                }
-                Err(err) => {
-                    slint::invoke_from_event_loop(move || {
-                        ui_weak.unwrap().set_login_error(err.into());
-                    }).unwrap();
-                }
+                Ok(_) => slint::invoke_from_event_loop(move || {
+                    let ui = ui_weak.unwrap();
+                    ui.set_auth_screen_state("landing".into());
+                    ui.set_login_error("Registration submitted! Awaiting SuperAdmin verification.".into());
+                    ui.set_form_user("".into()); ui.set_form_pass("".into()); ui.set_form_captcha_login("".into());
+                    ui.set_registration_fields(RegisterFormFields::default());
+                }).unwrap(),
+                Err(err) => slint::invoke_from_event_loop(move || { ui_weak.unwrap().set_login_error(err.into()); }).unwrap(),
             }
         });
     });
 
-    // --- SUPERADMIN OPERATOR APPROVAL MATRIX ---
+    // --- UI CALLBACK: ADMIN APPROVALS & DENIALS ---
     let app_weak_appr = app.as_weak();
     let db_appr_clone = Arc::clone(&db);
-    
     app.on_approve_pending_operator(move |target_user, assigned_role| {
         let ui_weak = app_weak_appr.clone();
         let db = Arc::clone(&db_appr_clone);
         let admin_name = ui_weak.unwrap().get_current_user_name().to_string();
-        
         tokio::spawn(async move {
-            match db.approve_user(&admin_name, &target_user, &assigned_role).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_pending_notification_name("NONE".into());
-                    }).unwrap();
-                }
-                Err(err) => println!("[ERROR] Admin validation fail: {}", err),
+            if db.approve_user(&admin_name, &target_user, &assigned_role).await.is_ok() {
+                slint::invoke_from_event_loop(move || ui_weak.unwrap().set_pending_notification_name("NONE".into())).unwrap();
             }
         });
     });
 
-    // --- SUPERADMIN OPERATOR DENIAL DISPATCHER ---
     let app_weak_deny = app.as_weak();
     let db_deny_clone = Arc::clone(&db);
-    
     app.on_deny_pending_operator(move |target_user| {
         let ui_weak = app_weak_deny.clone();
         let db = Arc::clone(&db_deny_clone);
         let admin_name_deny = ui_weak.unwrap().get_current_user_name().to_string();
-        
         tokio::spawn(async move {
-            match db.deny_user(&admin_name_deny, &target_user).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_pending_notification_name("NONE".into());
-                    }).unwrap();
-                }
-                Err(err) => println!("[ERROR] Admin denial execution fail: {}", err),
+            if db.deny_user(&admin_name_deny, &target_user).await.is_ok() {
+                slint::invoke_from_event_loop(move || ui_weak.unwrap().set_pending_notification_name("NONE".into())).unwrap();
             }
         });
     });
 
-    // --- INTERFACE OPERATOR LOG OUT CHANNEL ---
-    let app_weak_logout = app.as_weak();
-    app.on_request_logout(move || {
-        if let Some(ui) = app_weak_logout.upgrade() {
-            ui.set_is_logged_in(false);
-            ui.set_current_user_name("GUEST".into());
-            ui.set_current_user_role("UNAUTHORIZED".into());
-            ui.set_pending_notification_name("NONE".into());
-            ui.set_login_error("".into());
-            ui.set_auth_screen_state("landing".into());
-            
-            ui.set_form_user("".into());
-            ui.set_form_pass("".into());
-            ui.set_form_captcha_login("".into());
-            ui.set_registration_fields(RegisterFormFields::default());
-            
-            let mut fresh_rng = rand::thread_rng();
-            let v1 = fresh_rng.gen_range(5..20);
-            let v2 = fresh_rng.gen_range(2..10);
-            ui.set_captcha_q_main(format!("{} + {}", v1, v2).into());
-            ui.set_captcha_a_main((v1 + v2).to_string().into());
-            
-            println!("[SECURITY] Session terminated by user request. Session state scrubbed.");
-        }
-    });
-
-    // --- OPERATOR USER MANAGEMENT TAB MATRIX LOGIC ROUTERS ---
+    // --- UI CALLBACK: USER MANAGEMENT (OPERATOR MATRIX) ---
     let app_weak_users = app.as_weak();
     let db_users_clone = Arc::clone(&db);
-    
     app.on_load_users_list(move || {
         let ui_weak = app_weak_users.clone();
         let db = Arc::clone(&db_users_clone);
-        
         tokio::spawn(async move {
             if let Ok(users) = db.get_active_users().await {
                 let mut slint_users = Vec::new();
                 for u in users {
-                    slint_users.push(UserData {
-                        username: u.username.into(),
-                        role: u.role.into(),
-                        last_login: u.last_login.into(),
-                        full_name: u.full_name.into(),
-                        designation: u.designation.into(),
-                        expires_at: u.expires_at.into(),
-                    });
+                    slint_users.push(UserData { username: u.username.into(), role: u.role.into(), last_login: u.last_login.into(), full_name: u.full_name.into(), designation: u.designation.into(), expires_at: u.expires_at.into() });
                 }
-                
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.set_active_users_list(ModelRc::from(Rc::new(VecModel::from(slint_users))));
-                    }
-                }).unwrap();
+                slint::invoke_from_event_loop(move || ui_weak.unwrap().set_active_users_list(ModelRc::from(Rc::new(VecModel::from(slint_users))))).unwrap();
             }
         });
     });
 
-    // --- EXTEND ACCESS LEASE AND ASSIGN PRIVILEGE ---
     let app_weak_lease = app.as_weak();
     let db_lease_clone = Arc::clone(&db);
     app.on_extend_user_lease(move |target_user, new_role, days_string| {
         let ui_weak = app_weak_lease.clone();
         let db = Arc::clone(&db_lease_clone);
-        
-        let target_str = target_user.to_string();
-        let role_str = new_role.to_string();
         let days_valid: i32 = days_string.to_string().parse().unwrap_or(30);
         tokio::spawn(async move {
-            if db.update_user_lease(&target_str, &role_str, days_valid).await.is_ok() {
-                println!("[SECURITY] Access lease updated for operator {}: Assigned to {}, extended by {} days.", target_str, role_str, days_valid);
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.invoke_load_users_list();
-                    }
-                }).unwrap();
+            if db.update_user_lease(&target_user.to_string(), &new_role.to_string(), days_valid).await.is_ok() {
+                slint::invoke_from_event_loop(move || ui_weak.unwrap().invoke_load_users_list()).unwrap();
             }
         });
     });
 
-    // --- BAN USER PURGE CONTROL MATRIX CHANNEL ---
     let app_weak_ban = app.as_weak();
     let db_ban_clone = Arc::clone(&db);
     app.on_ban_user(move |target_user| {
         let ui_weak = app_weak_ban.clone();
         let db = Arc::clone(&db_ban_clone);
         let admin_name = ui_weak.unwrap().get_current_user_name().to_string();
-        let target_str = target_user.to_string();
         tokio::spawn(async move {
-            if db.ban_user(&admin_name, &target_str).await.is_ok() {
-                println!("[SECURITY] Operator {} has BANNED user {}", admin_name, target_str);
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.invoke_load_users_list();
-                    }
-                }).unwrap();
+            if db.ban_user(&admin_name, &target_user.to_string()).await.is_ok() {
+                slint::invoke_from_event_loop(move || ui_weak.unwrap().invoke_load_users_list()).unwrap();
             }
         });
     });
 
-    // =========================================================================
-    // ORACLE OPERATIONS CALLBACKS
-    // =========================================================================
+    // --- UI CALLBACK: LOGOUT ---
+    let app_weak_logout = app.as_weak();
+    app.on_request_logout(move || {
+        if let Some(ui) = app_weak_logout.upgrade() {
+            ui.set_is_logged_in(false); ui.set_current_user_name("GUEST".into()); ui.set_auth_screen_state("landing".into());
+        }
+    });
 
-    // 1. Delete Full Case
+    // =========================================================================
+    // ORACLE OPERATIONS CALLBACK HUB (GPFFP ONLY)
+    // =========================================================================
+    
     let app_weak_op1 = app.as_weak();
     let oracle_op1 = Arc::clone(&oracle_client);
     app.on_request_delete_full_case(move |regd_no, series_id, account_no| {
         let ui_weak = app_weak_op1.clone();
         let oracle = Arc::clone(&oracle_op1);
-        let r_no = regd_no.to_string();
-        let s_id = series_id.to_string();
-        let a_no = account_no.to_string();
-
-        if r_no.is_empty() || s_id.is_empty() || a_no.is_empty() {
-            let ui = ui_weak.unwrap();
-            ui.set_op_is_error(true);
-            ui.set_op_status_msg("Validation Error: REGD_NO, SERIES_ID, and ACCOUNT_NO are required.".into());
-            return;
-        }
+        let (r_no, s_id, a_no) = (regd_no.to_string(), series_id.to_string(), account_no.to_string());
 
         tokio::spawn(async move {
-            match oracle.delete_full_case(&r_no, &s_id, &a_no).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(false);
-                        ui.set_op_status_msg(format!("SUCCESS: Full Case deleted for REGD_NO: {}", r_no).into());
-                        ui.set_op_regd_no("".into());
-                        ui.set_op_series_id("".into());
-                        ui.set_op_account_no("".into());
-                    }).unwrap();
-                }
-                Err(e) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg(format!("TRANSACTION FAILED: {}", e).into());
-                    }).unwrap();
-                }
+            match oracle.gpffp_delete_full_case(&r_no, &s_id, &a_no).await {
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Full Case cleared.".into()); ui.set_op_regd_no("".into()); ui.set_op_series_id("".into()); ui.set_op_account_no("".into()); }).unwrap(),
+                Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });
     });
 
-    // 2. Delete Application
     let app_weak_op2 = app.as_weak();
     let oracle_op2 = Arc::clone(&oracle_client);
     app.on_request_delete_application(move |regd_no| {
@@ -407,35 +256,14 @@ async fn main() -> Result<(), slint::PlatformError> {
         let oracle = Arc::clone(&oracle_op2);
         let r_no = regd_no.to_string();
 
-        if r_no.is_empty() {
-            let ui = ui_weak.unwrap();
-            ui.set_op_is_error(true);
-            ui.set_op_status_msg("Validation Error: REGD_NO is required.".into());
-            return;
-        }
-
         tokio::spawn(async move {
-            match oracle.delete_from_application(&r_no).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(false);
-                        ui.set_op_status_msg(format!("SUCCESS: Application data deleted for REGD_NO: {}", r_no).into());
-                        ui.set_op_regd_no("".into());
-                    }).unwrap();
-                }
-                Err(e) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg(format!("TRANSACTION FAILED: {}", e).into());
-                    }).unwrap();
-                }
+            match oracle.gpffp_delete_from_application(&r_no).await {
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Application Record purged.".into()); ui.set_op_regd_no("".into()); }).unwrap(),
+                Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });
     });
 
-    // 3. Delete Pre-Calculation
     let app_weak_op3 = app.as_weak();
     let oracle_op3 = Arc::clone(&oracle_client);
     app.on_request_delete_precalc(move |regd_no| {
@@ -443,30 +271,10 @@ async fn main() -> Result<(), slint::PlatformError> {
         let oracle = Arc::clone(&oracle_op3);
         let r_no = regd_no.to_string();
 
-        if r_no.is_empty() {
-            let ui = ui_weak.unwrap();
-            ui.set_op_is_error(true);
-            ui.set_op_status_msg("Validation Error: REGD_NO is required.".into());
-            return;
-        }
-
         tokio::spawn(async move {
-            match oracle.delete_from_pre_calculation(&r_no).await {
-                Ok(_) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(false);
-                        ui.set_op_status_msg(format!("SUCCESS: Pre-Calculation cleared for REGD_NO: {}", r_no).into());
-                        ui.set_op_regd_no("".into());
-                    }).unwrap();
-                }
-                Err(e) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg(format!("TRANSACTION FAILED: {}", e).into());
-                    }).unwrap();
-                }
+            match oracle.gpffp_delete_from_pre_calculation(&r_no).await {
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Pre-Calculation values updated.".into()); ui.set_op_regd_no("".into()); }).unwrap(),
+                Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });
     });
@@ -477,34 +285,18 @@ async fn main() -> Result<(), slint::PlatformError> {
     let encryptor = Arc::new(ironvault_core::crypto::Encryptor::new(&network_secret));
     
     tokio::spawn(async move {
-        match tokio::net::TcpListener::bind("0.0.0.0:9443").await {
-            Ok(listener) => {
-                println!("[NETWORK] TCP Command Center actively listening for encrypted nodes on port 9443");
-                
-                loop {
-                    if let Ok((mut socket, addr)) = listener.accept().await {
-                        println!("[NETWORK] Connection intercepted from node IP: {}", addr);
-                        let dec = Arc::clone(&decryptor);
-                        let enc = Arc::clone(&encryptor);
-                        
-                        tokio::spawn(async move {
-                            match ironvault_core::network::receive_secure_payload::<ironvault_core::network::NodeCommand>(&mut socket, &dec).await {
-                                Ok(command) => {
-                                    println!("[NETWORK] Validated Secure Payload from {}: {:?}", addr, command);
-                                    let response = ironvault_core::network::NodeResponse::StatusData("Command execution authorized by Matrix.".to_string());
-                                    if let Err(e) = ironvault_core::network::send_secure_payload(&mut socket, &enc, &response).await {
-                                        println!("[NETWORK] Failed to transmit secure response: {}", e);
-                                    }
-                                }
-                                Err(e) => {
-                                    println!("[SECURITY FAULT] Handshake failed or payload expired from {}: {}", addr, e);
-                                }
-                            }
-                        });
-                    }
+        if let Ok(listener) = tokio::net::TcpListener::bind("0.0.0.0:9443").await {
+            loop {
+                if let Ok((mut socket, _addr)) = listener.accept().await {
+                    let dec = Arc::clone(&decryptor); let enc = Arc::clone(&encryptor);
+                    tokio::spawn(async move {
+                        if ironvault_core::network::receive_secure_payload::<ironvault_core::network::NodeCommand>(&mut socket, &dec).await.is_ok() {
+                            let response = ironvault_core::network::NodeResponse::StatusData("Command execution authorized.".to_string());
+                            let _ = ironvault_core::network::send_secure_payload(&mut socket, &enc, &response).await;
+                        }
+                    });
                 }
             }
-            Err(e) => println!("[NETWORK FAULT] Could not bind to TCP port 9443: {}", e),
         }
     });
 
