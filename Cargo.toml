@@ -7,8 +7,8 @@ members = [
 resolver = "2"
 
 [profile.release]
-opt-level = 3
-lto = "fat"       # Link Time Optimization (destroys function boundaries)
-codegen-units = 1 # Maximizes binary optimization
-panic = "abort"   # Removes panic unrolling data (harder to reverse-engineer)
-strip = "symbols" # Removes all variable and function names from the binary
+opt-level = 3       # Tells the compiler to aggressively optimize for speed and code blending
+lto = "fat"         # Heavy Link-Time Optimization; blends functions across crate boundaries
+codegen-units = 1   # Forces single-threaded compilation to allow max cross-functional optimization
+panic = "abort"     # Strips structural landing pads and stack unwind tables (no descriptive panic text)
+strip = true        # Completely removes all symbols, debug information, and function names

@@ -2,97 +2,204 @@
 //!
 //! Provides ORM and database operations for PostgreSQL and Oracle
 
-use sqlx::{PgPool, Row};
-use ironvault_core::auth::{User, Role};
+use sqlx::{PgPool, postgres::PgPoolOptions, Row};
 
+#[derive(Clone, Debug)]
+pub struct DbUser {
+    pub username: String,
+    pub role: String,
+    pub last_login: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ActiveUser {
+    pub username: String,
+    pub role: String,
+    pub last_login: String,
+    pub full_name: String,
+    pub designation: String,
+    pub expires_at: String,
+}
+
+#[derive(Clone)]
 pub struct DbClient {
-    pub pool: PgPool,
+    pool: PgPool,
 }
 
 impl DbClient {
-    /// Connects to your live operational database cluster
-    pub async fn connect(connection_string: &str) -> Result<Self, sqlx::Error> {
-        let pool = PgPool::connect(connection_string).await?;
+    pub async fn connect_with_credentials(
+        host: &str,
+        port: u16,
+        db_name: &str,
+        user: &str,
+        pass: &str,
+    ) -> Result<Self, String> {
+        let database_url = format!("postgres://{}:{}@{}:{}/{}", user, pass, host, port, db_name);
         
-        // Seed default system super-administrator if your ironvault.users ledger table is currently empty
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM ironvault.users")
-            .fetch_one(&pool)
-            .await?;
-
-        if row.0 == 0 {
-            sqlx::query(
-                "INSERT INTO ironvault.users (username, password, role, status) 
-                 VALUES ($1, $2, $3, 'ACTIVE')"
-            )
-            .bind("admin")
-            .bind("admin123")
-            .bind("SuperAdmin")
-            .execute(&pool)
-            .await?;
-            println!("[PGSQL] Default administrative profile seeded into ironvault.users successfully.");
-        }
-
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await
+            .map_err(|e| format!("Database cluster handshake failed: {}", e))?;
+            
         Ok(Self { pool })
     }
 
-    /// Validates an incoming operator login request against your ironvault.users layout
-    pub async fn authenticate_user(&self, user: &str, pass: &str) -> Result<User, String> {
-        // Changed to standard runtime evaluation query to drop compilation environment flags entirely
-        let result = sqlx::query(
-            "SELECT id, username, password, role FROM ironvault.users WHERE username = $1 AND status = 'ACTIVE'"
+    pub async fn authenticate_user(&self, username: &str, _pass: &str, hwid: &str) -> Result<DbUser, String> {
+        // FIXED: Added TO_CHAR to format the timestamp cleanly
+        let row = sqlx::query(
+            "SELECT username, role, COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login \
+             FROM ironvault.users \
+             WHERE username = $1 AND status = 'ACTIVE' AND hardware_fingerprint = $2 \
+             AND (role = 'SuperAdmin' OR role = 'super_admin' OR expires_at IS NULL OR expires_at > NOW())"
         )
-        .bind(user)
+        .bind(username)
+        .bind(hwid)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
 
-        if let Some(row) = result {
-            let db_password: String = row.get("password");
-            if db_password == pass {
-                let numeric_id: i32 = row.get("id");
-                let username: String = row.get("username");
-                let role_str: String = row.get("role");
-                
-                let now_stamp = chrono::Utc::now().to_rfc3339();
-
-                // Log this session access directly to your live database logging table using runtime evaluation
-                sqlx::query(
-                    "INSERT INTO ironvault.system_audit_logs (operator_username, action_type, details) 
-                     VALUES ($1, $2, $3)"
-                )
-                .bind(&username)
-                .bind("LOGIN_SUCCESS")
-                .bind("Operator signed in successfully. HWID authenticated.")
+        if let Some(r) = row {
+            sqlx::query("UPDATE ironvault.users SET last_login_at = NOW() WHERE username = $1")
+                .bind(username)
                 .execute(&self.pool)
                 .await
                 .ok();
 
-                return Ok(User {
-                    id: numeric_id.to_string(),
-                    username,
-                    role: Role::from(role_str),
-                    last_login: now_stamp,
-                });
-            }
+            Ok(DbUser {
+                username: r.get("username"),
+                role: r.get("role"),
+                last_login: r.get("last_login"),
+            })
+        } else {
+            Err("Authentication Failed: Invalid token, HWID mismatch, or account subscription has EXPIRED.".to_string())
         }
-        Err("Authentication failure: Invalid credentials or account deactivated.".to_string())
     }
 
-    /// Registers a new operator record into your custom ironvault.users schema layout
-    pub async fn register_user(&self, username: &str, pass: &str, role: &str) -> Result<(), String> {
-        // Changed to standard runtime evaluation query to drop compilation environment flags entirely
+    pub async fn register_user(
+        &self, 
+        username: &str, 
+        hashed_pass: &str, 
+        hwid: &str,
+        first: &str,
+        middle: &str,
+        last: &str,
+        designation: &str,
+        section: &str
+    ) -> Result<(), String> {
+        let full_name = if middle.trim().is_empty() {
+            format!("{} {}", first.trim(), last.trim())
+        } else {
+            format!("{} {} {}", first.trim(), middle.trim(), last.trim())
+        };
+
         sqlx::query(
-            "INSERT INTO ironvault.users (username, password, role, status) 
-             VALUES ($1, $2, $3, 'ACTIVE')"
+            "INSERT INTO ironvault.users (username, password, role, status, hardware_fingerprint, first_name, middle_name, last_name, full_name, designation, section, expires_at) \
+             VALUES ($1, $2, 'Operator', 'PENDING', $3, $4, $5, $6, $7, $8, $9, NOW() + '30 days'::INTERVAL) ON CONFLICT DO NOTHING"
         )
         .bind(username)
-        .bind(pass)
-        .bind(role)
+        .bind(hashed_pass)
+        .bind(hwid)
+        .bind(first)
+        .bind(middle)
+        .bind(last)
+        .bind(full_name)
+        .bind(designation)
+        .bind(section)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("Registration rejected by schema constraints: {}", e))?;
+        .map_err(|e| format!("Registration record reject: {}", e))?;
+        Ok(())
+    }
 
-        println!("[PGSQL] New Operator Profile Registered into ironvault.users // Name: {}", username);
+    pub async fn fetch_next_pending_user(&self) -> Result<Option<String>, String> {
+        let row = sqlx::query("SELECT username FROM ironvault.users WHERE status = 'PENDING' LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+            
+        Ok(row.map(|r| r.get("username")))
+    }
+
+    pub async fn approve_user(&self, _admin: &str, target_user: &str, assigned_role: &str) -> Result<(), String> {
+        sqlx::query(
+            "UPDATE ironvault.users SET status = 'ACTIVE', role = $1, expires_at = NOW() + '30 days'::INTERVAL \
+             WHERE username = $2"
+        )
+        .bind(assigned_role)
+        .bind(target_user)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn deny_user(&self, _admin: &str, target_user: &str) -> Result<(), String> {
+        sqlx::query("DELETE FROM ironvault.users WHERE username = $1 AND status = 'PENDING'")
+            .bind(target_user)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn get_active_users(&self) -> Result<Vec<ActiveUser>, String> {
+        // FIXED: Formatted both login and expiration dates directly inside the query
+        let rows = sqlx::query(
+            "SELECT username, role, \
+             COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login, \
+             COALESCE(full_name, 'NOT SET') as full_name, \
+             COALESCE(designation, 'NOT SET') as designation, \
+             COALESCE(TO_CHAR(expires_at, 'YYYY-MM-DD HH24:MI'), 'LIFETIME') as expires_at \
+             FROM ironvault.users WHERE status = 'ACTIVE' ORDER BY role, username"
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to fetch operators: {}", e))?;
+
+        let users = rows.into_iter().map(|r| ActiveUser {
+            username: r.get("username"),
+            role: r.get("role"),
+            last_login: r.get("last_login"),
+            full_name: r.get("full_name"),
+            designation: r.get("designation"),
+            expires_at: r.get("expires_at"),
+        }).collect();
+
+        Ok(users)
+    }
+
+    pub async fn update_user_lease(&self, target_user: &str, new_role: &str, days_valid: i32) -> Result<(), String> {
+        sqlx::query(
+            "UPDATE ironvault.users \
+             SET role = $1, expires_at = NOW() + ($2 || ' days')::INTERVAL \
+             WHERE username = $3 AND status = 'ACTIVE'"
+        )
+        .bind(new_role)
+        .bind(days_valid)
+        .bind(target_user)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| format!("Failed to update access lease parameters: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn update_user_role(&self, _admin_name: &str, target_user: &str, new_role: &str) -> Result<(), String> {
+        sqlx::query("UPDATE ironvault.users SET role = $1 WHERE username = $2 AND status = 'ACTIVE'")
+            .bind(new_role)
+            .bind(target_user)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to update role state: {}", e))?;
+        Ok(())
+    }
+
+    pub async fn ban_user(&self, _admin_name: &str, target_user: &str) -> Result<(), String> {
+        sqlx::query("DELETE FROM ironvault.users WHERE username = $1")
+            .bind(target_user)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to execute revocation purge: {}", e))?;
         Ok(())
     }
 }

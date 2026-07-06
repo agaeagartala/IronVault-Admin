@@ -1,107 +1,472 @@
 // Master window with sidebar + content router
 // Main entry point for the Slint UI
 
-import { DashboardView } from "views/dashboard.slint";
-import { LoginView } from "views/login.slint";
-import { HorizontalBox, VerticalBox } from "std-widgets.slint";
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { Theme } from "theme.slint";
+import { RegisterView, RegisterFormFields } from "views/register.slint";
 
-export component AppWindow inherits Window {
-    title: "IronVault Control Center";
-    width: 1100px;
-    height: 700px;
-    background: #0B0F19; 
+// --- UPGRADED ANIMATED NAV ITEM ---
+component NavItem inherits Rectangle {
+    in property <string> text;
+    in property <image> icon_source;
+    in property <bool> active;
+    in property <bool> collapsed;
+    callback clicked();
     
-    in-out property <bool> is_logged_in: false;
-    in-out property <string> current_user_name: "Guest";
-    in-out property <string> current_user_role: "Unverified";
-    in-out property <string> last_login: "--";
-    in-out property <string> hwid_string: "HWID: LOADING...";
-    in-out property <string> login_error: "";
+    height: 44px;
+    border-radius: 10px;
     
-    callback request_authentication(string, string);
-    callback request_registration(string, string, string); // Add this callback definition
+    // Smooth background transitions
+    background: ta.pressed ? Theme.bg-card-hover : (ta.has-hover ? Theme.bg-card : (active ? #00E5FF1A : transparent));
+    border-width: active ? 1px : 0px;
+    border-color: Theme.brand-primary;
+    
+    animate background { duration: 150ms; }
 
-    if !is_logged_in : LoginView {
-    error_message: root.login_error;
-    login_requested(user, pass) => { root.request_authentication(user, pass); }
-    registration_requested(user, pass, role) => { root.request_registration(user, pass, role); } // Bind it here
-    }
-    
-    if is_logged_in : HorizontalBox {
-        padding: 0px;
-        spacing: 0px;
+    HorizontalLayout {
+        padding-left: root.collapsed ? 0px : 14px;
+        padding-right: root.collapsed ? 0px : 14px;
+        alignment: root.collapsed ? LayoutAlignment.center : LayoutAlignment.start;
+        spacing: root.collapsed ? 0px : 16px;
         
-        // Sidebar Navigation Container
-        Rectangle {
-            width: 250px;
-            background: #111827;
+        VerticalLayout {
+            alignment: center;
             
-            // Replaced border-right-width with an explicit divider line
+            // Container ensures layout doesn't shift when icon expands
             Rectangle {
-                x: parent.width - 1px;
-                width: 1px;
-                height: parent.height;
-                background: #1F2937;
-            }
-            
-            VerticalBox {
-                padding: 20px;
-                spacing: 15px;
+                width: 26px; height: 26px;
                 
-                Text { text: "IRONVAULT"; font-size: 24px; font-weight: 800; color: #38BDF8; }
-                Text { text: "v2.1.0-ENTERPRISE"; font-size: 10px; color: #6B7280; }
-                Text { text: root.hwid_string; font-size: 9px; color: #4B5563; }
-                
-                Rectangle { height: 20px; } 
-                
-                Rectangle { height: 40px; background: #1E293B; border-radius: 6px; Text { text: "Dashboard"; color: white; x: 15px; vertical-alignment: center;} }
-                Rectangle { height: 40px; Text { text: "Database Sync"; color: #9CA3AF; x: 15px; vertical-alignment: center;} }
-                Rectangle { height: 40px; Text { text: "System Audit Logs"; color: #9CA3AF; x: 15px; vertical-alignment: center;} }
-                
-                Rectangle {} // Pushes copyright to bottom
-                
-                Text { text: "© 2026 IronVault Systems"; font-size: 10px; color: #4B5563; }
+                Image {
+                    source: root.icon_source;
+                    // Slint-native scaling: animate width/height directly
+                    width: ta.has-hover ? 25px : 22px;
+                    height: ta.has-hover ? 25px : 22px;
+                    image-fit: contain; 
+                    opacity: root.active ? 1.0 : (ta.has-hover ? 0.9 : 0.6);
+                    
+                    animate opacity { duration: 150ms; }
+                    animate width { duration: 120ms; easing: ease-in-out; }
+                    animate height { duration: 120ms; easing: ease-in-out; }
+                }
             }
         }
         
-        // Main Content Area
-        VerticalBox {
-            padding: 0px;
-            spacing: 0px;
-            
-            // Top Header Bar
-            Rectangle {
-                height: 70px;
-                background: #0B0F19;
+        if (!root.collapsed) : VerticalLayout {
+            alignment: center;
+            Text { 
+                text: root.text; 
+                font-size: 14px; 
+                font-weight: root.active ? 800 : 600; 
+                color: root.active ? Theme.brand-primary : Theme.text-secondary; 
+                animate color { duration: 200ms; }
+            }
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+export struct UserData {
+    username: string,
+    role: string,
+    last_login: string,
+    full_name: string,
+    designation: string,
+    expires_at: string,
+}
+
+export component AppWindow inherits Window {
+    title: "IronVault Command Center";
+    
+    preferred-width: 1320px; 
+    preferred-height: 800px;
+    min-width: 1024px;
+    min-height: 600px;
+    
+    background: Theme.bg-main; 
+    icon: @image-url("assets/app_icon.png");
+
+    in-out property <bool> sidebar_collapsed: false;
+
+    in-out property <string> hwid_string: "HWID: UNKNOWN";
+    in-out property <string> current_user_name: "GUEST";
+    in-out property <string> current_user_role: "UNAUTHORIZED";
+    in-out property <string> last_login: "NEVER";
+    in-out property <bool> is_logged_in: false;
+    
+    in-out property <string> auth_screen_state: "landing"; 
+    in-out property <string> active_tab: "overview";
+
+    in-out property <string> captcha_q_main: "0 + 0";
+    in-out property <string> captcha_a_main: "0";
+    in-out property <string> login_error: "";
+
+    in-out property <string> form_user: "";
+    in-out property <string> form_pass: "";
+    in-out property <string> form_captcha_login: "";
+    
+    in-out property <RegisterFormFields> registration_fields;
+
+    in-out property <string> pending_notification_name: "NONE";
+    in-out property <string> polling_error_msg: "";
+    in-out property <[UserData]> active_users_list: [];
+
+    callback request_authentication(string, string);
+    callback request_registration(string, string, string, string, string, string, string);
+    callback approve_pending_operator(string, string);
+    callback deny_pending_operator(string);
+    callback request_logout();
+    callback load_users_list();
+    callback update_user_role(string, string);
+    callback extend_user_lease(string, string, string);
+    callback ban_user(string);
+
+    HorizontalLayout {
+        padding: 0px; spacing: 0px;
+
+        if (root.is_logged_in) : Rectangle {
+            width: root.sidebar_collapsed ? 74px : 260px;
+            background: Theme.bg-sidebar;
+            border-width: 1px; border-color: Theme.border-dark;
+            drop-shadow-blur: 20px; drop-shadow-color: #000000D9;
+            animate width { duration: 220ms; easing: ease-in-out; }
+
+            VerticalLayout {
+                padding: 16px; spacing: 10px; alignment: start;
                 
-                // Replaced border-bottom-width with an explicit divider line
-                Rectangle {
-                    y: parent.height - 1px;
-                    height: 1px;
-                    width: parent.width;
-                    background: #1F2937;
+                // --- THE LOGO MASTER HEADER WITH ACCENT ANIMATION ---
+                HorizontalLayout {
+                    alignment: root.sidebar_collapsed ? LayoutAlignment.center : LayoutAlignment.start;
+                    padding-bottom: 16px;
+                    spacing: 12px;
+                    
+                    Rectangle {
+                        width: 38px; height: 38px;
+                        border-radius: 8px;
+                        background: logo_ta.has-hover ? Theme.bg-card : transparent;
+                        animate background { duration: 150ms; }
+                        
+                        // USER EXPERIENCE ANIMATION: Dynamic sizing instead of scale
+                        Image {
+                            source: @image-url("assets/app_icon.png");
+                            width: logo_ta.has-hover ? 26px : 24px;
+                            height: logo_ta.has-hover ? 26px : 24px;
+                            image-fit: contain;
+                            animate width { duration: 100ms; }
+                            animate height { duration: 100ms; }
+                        }
+
+                        logo_ta := TouchArea {
+                            clicked => { root.sidebar_collapsed = !root.sidebar_collapsed; }
+                        }
+                    }
+                    
+                    if (!root.sidebar_collapsed) : VerticalLayout {
+                        spacing: 2px; alignment: center;
+                        Text { text: "IRONVAULT"; font-size: 18px; font-weight: 900; color: Theme.text-primary; letter-spacing: 2px; }
+                        Text { text: "COMMAND CENTER"; font-size: 8px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                    }
                 }
                 
-                HorizontalBox {
-                    padding-left: 20px;
-                    padding-right: 20px;
-                    alignment: space-between;
+                if (!root.sidebar_collapsed) : VerticalLayout {
+                    padding-bottom: 8px;
+                    Text { text: root.hwid_string; font-size: 9px; color: Theme.text-dark; }
+                }
+                
+                Rectangle { height: 1px; background: Theme.border-dark; }
+                Rectangle { height: 8px; }
+
+                NavItem {
+                    text: "Dashboard"; icon_source: @image-url("assets/dashboard.png"); 
+                    active: root.active_tab == "overview";
+                    collapsed: root.sidebar_collapsed;
+                    clicked => { root.active_tab = "overview"; }
+                }
+                
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Super Admin") : NavItem {
+                    text: "Access Requests"; icon_source: @image-url("assets/requests.png"); 
+                    active: root.active_tab == "approvals";
+                    collapsed: root.sidebar_collapsed;
+                    clicked => { root.active_tab = "approvals"; }
+                }
+
+                if (root.current_user_role == "SuperAdmin" || root.current_user_role == "super_admin" || root.current_user_role == "Super Admin") : NavItem {
+                    text: "Operator Matrix"; icon_source: @image-url("assets/matrix.png"); 
+                    active: root.active_tab == "users";
+                    collapsed: root.sidebar_collapsed;
+                    clicked => { root.active_tab = "users"; root.load_users_list(); }
+                }
+
+                Rectangle { vertical-stretch: 1; }
+                
+                Rectangle { height: 8px; }
+                Rectangle { height: 1px; background: Theme.border-dark; }
+                Rectangle { height: 8px; }
+
+                NavItem {
+                    text: "Terminate Session"; icon_source: @image-url("assets/logout.png"); 
+                    active: false;
+                    collapsed: root.sidebar_collapsed;
+                    clicked => { root.request_logout(); }
+                }
+            }
+        }
+
+        Rectangle {
+            horizontal-stretch: 1;
+            background: Theme.bg-main; 
+            
+            if (!root.is_logged_in) : VerticalLayout {
+                alignment: center;
+                HorizontalLayout {
+                    alignment: center;
                     
-                    Text { text: "Operations Console"; font-size: 18px; color: white; vertical-alignment: center; }
-                    
-                    HorizontalBox {
-                        spacing: 15px;
-                        VerticalBox {
-                            alignment: center;
-                            Text { text: root.current_user_name; color: white; font-weight: 700; horizontal-alignment: right; }
-                            Text { text: root.current_user_role + " | Last: " + root.last_login; color: #38BDF8; font-size: 11px; horizontal-alignment: right; }
+                    Rectangle {
+                        width: root.auth_screen_state == "register" ? 680px : 440px; 
+                        background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
+                        drop-shadow-blur: 40px; drop-shadow-color: #00E5FF1A; 
+                        animate width { duration: 250ms; easing: ease-in-out; }
+
+                        VerticalLayout {
+                            padding: 40px; spacing: 16px;
+
+                            VerticalLayout {
+                                alignment: center; spacing: 5px; padding-bottom: 5px;
+                                Text { text: "❖ IRONVAULT"; font-size: 32px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; }
+                                if (root.auth_screen_state == "landing") : Text { text: "CORE PLATFORM ROUTER"; font-size: 11px; font-weight: 700; color: Theme.text-muted; horizontal-alignment: center; letter-spacing: 2px; }
+                                if (root.auth_screen_state == "login") : Text { text: "SECURE OPERATOR LOGIN"; font-size: 11px; font-weight: 700; color: Theme.text-secondary; horizontal-alignment: center; letter-spacing: 2px; }
+                                if (root.auth_screen_state == "register") : Text { text: "NODE INITIALIZATION DEPLOYMENT"; font-size: 11px; font-weight: 700; color: Theme.text-secondary; horizontal-alignment: center; letter-spacing: 2px; }
+                            }
+                            
+                            Rectangle { height: 1px; background: Theme.border-color; }
+
+                            if (root.auth_screen_state == "landing") : VerticalLayout {
+                                spacing: 16px; padding-top: 10px;
+                                Button {
+                                    text: "🔒 Access Terminal Login"; height: 45px;
+                                    clicked => { root.auth_screen_state = "login"; root.login_error = ""; }
+                                }
+                                Button {
+                                    text: "🛰️ Enroll New Node Profile"; height: 45px;
+                                    clicked => { root.auth_screen_state = "register"; root.login_error = ""; }
+                                }
+                            }
+
+                            if (root.auth_screen_state == "login") : VerticalLayout {
+                                spacing: 14px;
+                                
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "OPERATOR IDENTITY ACCOUNT"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+                                    LineEdit { text <=> root.form_user; placeholder_text: "Enter identity sequence..."; height: 34px; }
+                                }
+                                
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "CRYPTOGRAPHIC ACCESS SIGNATURE"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+                                    LineEdit { text <=> root.form_pass; placeholder_text: "Enter token secret..."; input-type: password; height: 34px; }
+                                }
+                                
+                                VerticalLayout {
+                                    spacing: 4px;
+                                    Text { text: "SECURITY CHALLENGE MATRIX"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+                                    HorizontalLayout {
+                                        spacing: 12px;
+                                        Rectangle {
+                                            background: Theme.border-color; border-radius: 4px; horizontal-stretch: 1; height: 36px;
+                                            Text { text: "Solve Sequence: " + root.captcha_q_main; font-size: 12px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; horizontal-alignment: center; }
+                                        }
+                                        LineEdit { text <=> root.form_captcha_login; width: 110px; height: 36px; placeholder_text: "Result"; }
+                                    }
+                                }
+
+                                if (root.login_error != "") : Rectangle {
+                                    background: #FF336633; border-radius: 6px; border-width: 1px; border-color: Theme.brand-danger;
+                                    HorizontalLayout { padding: 8px; Text { text: root.login_error; color: #FFA0B4; font-size: 12px; font-weight: 600; wrap: word-wrap; horizontal-alignment: center; } }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 14px; padding-top: 18px; 
+                                    Button {
+                                        text: "Authenticate Access"; height: Theme.button-height; horizontal-stretch: 1;
+                                        clicked => {
+                                            if (root.form_captcha_login == root.captcha_a_main) { root.request_authentication(root.form_user, root.form_pass); }
+                                            else { root.login_error = "Validation Fault: Challenge mismatch."; }
+                                        }
+                                    }
+                                    Button {
+                                        text: "Return to Gateway"; height: Theme.button-height; horizontal-stretch: 1;
+                                        clicked => { root.auth_screen_state = "landing"; root.login_error = ""; }
+                                    }
+                                }
+                            }
+
+                            if (root.auth_screen_state == "register") : RegisterView {
+                                captcha-question: root.captcha_q_main;
+                                operational-error: root.login_error;
+                                form-data <=> root.registration_fields;
+                                
+                                submit-registration => {
+                                    if (root.registration_fields.captcha-result == root.captcha_a_main) {
+                                        root.request_registration(
+                                            root.registration_fields.username,
+                                            root.registration_fields.secret,
+                                            root.registration_fields.first-name,
+                                            root.registration_fields.middle-name,
+                                            root.registration_fields.last-name,
+                                            root.registration_fields.designation,
+                                            root.registration_fields.section
+                                        );
+                                    } else {
+                                        root.login_error = "Validation Fault: Challenge mismatch.";
+                                    }
+                                }
+                                cancel-registration => {
+                                    root.auth_screen_state = "landing";
+                                    root.login_error = "";
+                                }
+                            }
                         }
-                        Rectangle { width: 40px; height: 40px; border-radius: 20px; background: #38BDF8; y: 15px; } // Avatar
                     }
                 }
             }
-            
-            DashboardView {}
+
+            if (root.is_logged_in) : VerticalLayout {
+                padding: 40px; spacing: 25px;
+
+                if (root.active_tab == "overview") : VerticalLayout {
+                    spacing: 20px;
+                    Text { text: "Security Command Dashboard"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
+                    
+                    Rectangle {
+                        background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
+                        drop-shadow-blur: 15px; drop-shadow-color: #00000066;
+                        
+                        VerticalLayout {
+                            padding: 30px; spacing: 15px;
+                            HorizontalLayout {
+                                spacing: 15px;
+                                Text { text: "⛑️"; font-size: 24px; vertical-alignment: center; }
+                                Text { text: "Active Node Diagnostics"; font-size: 20px; font-weight: 800; color: Theme.brand-success; vertical-alignment: center; } 
+                            }
+                            Rectangle { height: 1px; background: Theme.border-color; }
+                            Text { text: "Operator Identity:  " + root.current_user_name; color: Theme.text-primary; font-size: 16px; font-weight: 600;}
+                            Text { text: "Authority Class:    " + root.current_user_role; color: Theme.brand-primary; font-size: 16px; font-weight: 800;}
+                            Text { text: "Database Binding:   " + root.last_login; color: Theme.text-secondary; font-size: 14px; }
+                        }
+                    }
+                }
+
+                if (root.active_tab == "approvals") : VerticalLayout {
+                    spacing: 20px;
+                    Text { text: "Pending Access Router"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
+                    
+                    Rectangle {
+                        background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
+                        drop-shadow-blur: 15px; drop-shadow-color: #00000066;
+                        
+                        VerticalLayout {
+                            padding: 30px; spacing: 20px;
+                            if (root.pending_notification_name != "NONE") : VerticalLayout {
+                                spacing: 15px;
+                                Text { text: "⚠️ Incoming Authorization Request Intercepted"; font-size: 18px; color: Theme.brand-warning; font-weight: 800; } 
+                                Text { text: "Target Account: " + root.pending_notification_name; font-size: 20px; font-weight: 700; color: Theme.text-primary; }
+                                
+                                HorizontalLayout {
+                                    spacing: 15px;
+                                    role_selector := LineEdit { text: "Operator"; placeholder_text: "Assign role"; width: 200px; height: 38px; }
+                                    Button { text: "Grant Authorization"; height: 38px; clicked => { root.approve_pending_operator(root.pending_notification_name, role_selector.text); } }
+                                    Button { text: "Purge Request"; height: 38px; clicked => { root.deny_pending_operator(root.pending_notification_name); } }
+                                }
+                            }
+                            if (root.pending_notification_name == "NONE") : Text { 
+                                text: "No pending terminal authorization links detected in current cycle buffer."; 
+                                color: Theme.text-muted; font-size: 16px; font-italic: true; 
+                            }
+                        }
+                    }
+                }
+
+                if (root.active_tab == "users") : VerticalLayout {
+                    spacing: 24px; vertical-stretch: 1;
+                    
+                    VerticalLayout {
+                        spacing: 8px;
+                        Text { text: "Active Operator Control Matrix"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
+                        Text { text: "Live administration node. Access leases auto-enforce system lockdowns outside validity parameters."; font-size: 15px; color: Theme.text-secondary; }
+                    }
+
+                    Rectangle {
+                        background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
+                        drop-shadow-blur: 20px; drop-shadow-color: #00000080;
+                        vertical-stretch: 1;
+                        
+                        VerticalLayout {
+                            padding: 24px; spacing: 0px;
+                            
+                            HorizontalLayout {
+                                padding-left: 20px; padding-bottom: 16px; spacing: 15px;
+                                Text { text: "OPERATOR / NAME"; width: 180px; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                                Text { text: "DESIGNATION"; width: 160px; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                                Text { text: "LEASE EXPIRES"; width: 120px; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                                Text { text: "ASSIGNMENT"; width: 120px; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                                Text { text: "DAYS"; width: 60px; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                                Text { text: "ROUTING ACTIONS"; horizontal-stretch: 1; font-size: 11px; font-weight: 800; color: Theme.brand-primary; letter-spacing: 1.5px; }
+                            }
+                            
+                            Rectangle { height: 1px; background: Theme.border-color; }
+                            Rectangle { height: 16px; }
+
+                            ScrollView {
+                                width: 100%; vertical-stretch: 1;
+                                
+                                VerticalLayout {
+                                    spacing: 12px; alignment: start; padding-bottom: 20px;
+                                    
+                                    for user in root.active_users_list : Rectangle {
+                                        height: 64px;
+                                        border-radius: 10px;
+                                        background: row_ta.has-hover ? Theme.bg-card-hover : Theme.bg-sidebar;
+                                        border-width: 1px;
+                                        border-color: row_ta.has-hover ? Theme.brand-primary : Theme.border-dark;
+                                        
+                                        drop-shadow-blur: row_ta.has-hover ? 12px : 0px;
+                                        drop-shadow-color: #00E5FF1A; 
+                                        
+                                        animate background { duration: 150ms; }
+                                        animate border-color { duration: 150ms; }
+                                        animate drop-shadow-blur { duration: 150ms; }
+                                        
+                                        row_ta := TouchArea {}
+
+                                        HorizontalLayout {
+                                            padding-left: 20px; padding-right: 20px;
+                                            spacing: 15px;
+                                            
+                                            VerticalLayout {
+                                                width: 180px; spacing: 2px; alignment: center;
+                                                Text { text: "👤 " + user.username; color: Theme.text-primary; font-size: 15px; font-weight: 800; overflow: elide; }
+                                                Text { text: user.full_name; color: Theme.text-muted; font-size: 12px; font-weight: 600; overflow: elide; }
+                                            }
+
+                                            VerticalLayout { width: 160px; alignment: center; Text { text: user.designation; color: Theme.text-secondary; font-size: 14px; wrap: word-wrap; } }
+                                            VerticalLayout { width: 120px; alignment: center; Text { text: user.expires_at; color: (user.expires_at == "LIFETIME" ? Theme.brand-success : Theme.brand-warning); font-size: 12px; font-weight: 800; overflow: elide; } }
+                                            
+                                            VerticalLayout { alignment: center; role_input := LineEdit { text: user.role; width: 120px; height: 34px; } }
+                                            VerticalLayout { alignment: center; days_input := LineEdit { text: "30"; placeholder_text: "Days"; width: 60px; height: 34px; } }
+                                            
+                                            HorizontalLayout {
+                                                spacing: 10px; horizontal-stretch: 1; alignment: start;
+                                                VerticalLayout { alignment: center; Button { text: "Save"; width: 70px; height: 34px; clicked => { root.extend_user_lease(user.username, role_input.text, days_input.text); } } }
+                                                VerticalLayout { alignment: center; Button { text: "Ban"; width: 60px; height: 34px; clicked => { root.ban_user(user.username); } } }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
