@@ -5,16 +5,6 @@ import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme } from "theme.slint";
 import { RegisterView, RegisterFormFields } from "views/register.slint";
 
-// --- NEW EXPORTED DATA STRUCTURE FOR LOOKUP MATCHES ---
-export struct GpfCaseDetails {
-    regd_no: string,
-    holder_name: string,
-    series_id: string,
-    account_no: string,
-    balance: string,
-    status: string,
-}
-
 // --- STRIKING NAV ITEM (POWERED BY LUCIDE VECTOR PATHS) ---
 component NavItem inherits Rectangle {
     in property <string> text;
@@ -49,6 +39,8 @@ component NavItem inherits Rectangle {
                     height: ta.has-hover ? 22px : (root.active ? 20px : 18px); 
                     image-fit: contain;
                     opacity: root.active ? 1.0 : (ta.has-hover ? 0.95 : 0.6);
+                    
+                    // FIXED: Dynamic colorize matrix tinting blocks black fallback states
                     colorize: root.active ? Theme.brand-primary : (ta.has-hover ? Theme.text-primary : Theme.text-secondary);
                     
                     animate width { duration: 120ms; easing: ease-in-out; }
@@ -69,6 +61,7 @@ component NavItem inherits Rectangle {
         }
     }
     
+    // COLLAPSED SIDEBAR HOVER POPUP INTERCEPT TOOLTIP
     if (root.collapsed && ta.has-hover) : Rectangle {
         x: 64px; y: 6px;
         height: 32px;
@@ -206,10 +199,6 @@ export component AppWindow inherits Window {
     in-out property <string> op_target_schema: "gpffp";
     in-out property <string> op_regd_no: ""; in-out property <string> op_series_id: ""; in-out property <string> op_account_no: "";
     in-out property <string> op_status_msg: ""; in-out property <bool> op_is_error: false;
-    
-    // Discovery Engine Variables
-    in-out property <bool> gpf_case_found: false;
-    in-out property <GpfCaseDetails> active_gpf_case;
 
     callback request_authentication(string, string);
     callback request_registration(string, string, string, string, string, string, string);
@@ -219,8 +208,6 @@ export component AppWindow inherits Window {
     callback extend_user_lease(string, string, string, string); 
     callback ban_user(string);
 
-    // Dynamic Discovery Pipeline Callback Channel - Updated signature
-    callback request_find_gpf_case(string);
     callback request_delete_full_case(string, string, string);
     callback request_delete_application(string);
     callback request_delete_precalc(string);
@@ -281,13 +268,16 @@ export component AppWindow inherits Window {
                 alignment: center; HorizontalLayout { alignment: center; Rectangle { width: root.auth_screen_state == "register" ? 680px : 440px; background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color; drop-shadow-blur: 40px; drop-shadow-color: #00E5FF1A; animate width { duration: 250ms; easing: ease-in-out; } VerticalLayout { padding: 40px; spacing: 16px; VerticalLayout { alignment: center; spacing: 5px; padding-bottom: 5px; Text { text: "IRONVAULT"; font-size: 32px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; } } Rectangle { height: 1px; background: Theme.border-color; } if (root.auth_screen_state == "landing") : VerticalLayout { spacing: 16px; padding-top: 10px; Button { text: "🔑  Access Terminal Login"; height: 45px; clicked => { root.auth_screen_state = "login"; root.login_error = ""; } } Button { text: "📝  Enroll New Node Profile"; height: 45px; clicked => { root.auth_screen_state = "register"; root.login_error = ""; } } } if (root.auth_screen_state == "login") : VerticalLayout { spacing: 14px; LineEdit { text <=> root.form_user; placeholder_text: "Operator ID"; height: 34px; } LineEdit { text <=> root.form_pass; placeholder_text: "Secret Token"; input-type: password; height: 34px; } HorizontalLayout { spacing: 12px; Rectangle { background: Theme.border-color; border-radius: 4px; horizontal-stretch: 1; height: 36px; Text { text: "Solve: " + root.captcha_q_main; font-size: 12px; font-weight: 700; color: Theme.text-primary; horizontal-alignment: center; vertical-alignment: center; } } LineEdit { text <=> root.form_captcha_login; width: 110px; height: 36px; placeholder_text: "Result"; } } if (root.login_error != "") : Rectangle { background: #FF336633; border-radius: 6px; border-width: 1px; border-color: Theme.brand-danger; HorizontalLayout { padding: 8px; Text { text: root.login_error; color: #FFA0B4; font-size: 12px; font-weight: 600; horizontal-alignment: center; } } } HorizontalLayout { spacing: 14px; padding-top: 18px; Button { text: "Authenticate Access"; height: Theme.button-height; horizontal-stretch: 1; clicked => { if (root.form_captcha_login == root.captcha_a_main) { root.request_authentication(root.form_user, root.form_pass); } else { root.login_error = "Validation Fault: Challenge mismatch."; } } } Button { text: "Return Gateway"; height: Theme.button-height; horizontal-stretch: 1; clicked => { root.auth_screen_state = "landing"; root.login_error = ""; } } } } if (root.auth_screen_state == "register") : RegisterView { captcha-question: root.captcha_q_main; operational-error: root.login_error; form-data <=> root.registration_fields; submit-registration => { if (root.registration_fields.captcha-result == root.captcha_a_main) { root.request_registration(root.registration_fields.username, root.registration_fields.secret, root.registration_fields.first-name, root.registration_fields.middle-name, root.registration_fields.last-name, root.registration_fields.designation, root.registration_fields.section); } else { root.login_error = "Validation Fault: Challenge mismatch."; } } cancel-registration => { root.auth_screen_state = "landing"; root.login_error = ""; } } } } } }
         }
 
+        // Authenticated Session Content Views Panel 
         if (root.is_logged_in) : Rectangle {
             horizontal-stretch: 1; background: Theme.bg-main; 
             VerticalLayout {
                 padding: 40px; spacing: 25px;
 
+                // --- TAB 1: OPERATOR PROFILE CARD (LOGOUT ALIGNED PERFECTLY IN CENTER-RIGHT PROFILE CLUSTER) ---
                 if (root.active_tab == "overview") : VerticalLayout {
-                    spacing: 20px; Text { text: "Command Dashboard"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
+                    spacing: 20px; 
+                    Text { text: "Command Dashboard"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
                     
                     Rectangle {
                         background: Theme.bg-card; border-radius: 12px; border-width: 1px; border-color: Theme.border-color; drop-shadow-blur: 15px; drop-shadow-color: #0000004D;
@@ -296,13 +286,20 @@ export component AppWindow inherits Window {
                         HorizontalLayout {
                             padding: 24px; spacing: 25px; alignment: start;
                             
+                            // Column 1: Interactive Avatar
                             VerticalLayout {
                                 alignment: center;
-                                Avatar { username: root.current_user_name; avatar_source: root.current_avatar_image; has_avatar: root.current_avatar_loaded; clicked => { root.request_profile_pic_update(); } }
+                                Avatar { 
+                                    username: root.current_user_name; 
+                                    avatar_source: root.current_avatar_image;
+                                    has_avatar: root.current_avatar_loaded;
+                                    clicked => { root.request_profile_pic_update(); } 
+                                }
                             }
                             
+                            // Column 2: Identity Information Stack
                             VerticalLayout {
-                                alignment: center; spacing: 4px; width: 250px;
+                                alignment: center; spacing: 4px; width: 240px;
                                 Text { text: root.current_user_full_name; font-size: 22px; font-weight: 900; color: Theme.brand-primary; overflow: elide; }
                                 Text { text: root.current_user_designation; font-size: 14px; font-weight: 700; color: Theme.text-secondary; }
                                 Text { text: "ID: @" + root.current_user_name; font-size: 13px; font-weight: 800; color: Theme.brand-warning; }
@@ -310,6 +307,7 @@ export component AppWindow inherits Window {
 
                             Rectangle { width: 1px; background: Theme.border-color; }
 
+                            // Column 3: Lease Info
                             VerticalLayout {
                                 alignment: center; spacing: 12px; width: 180px;
                                 VerticalLayout { spacing: 2px; Text { text: "AUTHORITY CLASS"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.current_user_role; font-size: 15px; font-weight: 800; color: Theme.text-primary; } }
@@ -318,6 +316,7 @@ export component AppWindow inherits Window {
                             
                             Rectangle { width: 1px; background: Theme.border-color; }
 
+                            // Column 4: Assigned Modules
                             VerticalLayout {
                                 alignment: center; spacing: 6px; width: 340px;
                                 Text { text: "AUTHORIZED SCHEMAS"; font-size: 10px; font-weight: 800; color: Theme.text-muted; }
@@ -326,8 +325,9 @@ export component AppWindow inherits Window {
 
                             Rectangle { width: 1px; background: Theme.border-color; }
 
+                            // COLUMN 5: POLISHED REPOSITIONED LOGOUT ICON BUTTON (CENTER RIGHT MARGIN ACCENT)
                             VerticalLayout {
-                                alignment: center; horizontal-stretch: 1; padding-left: 10px;
+                                alignment: center; horizontal-stretch: 1; padding-left: 15px;
                                 HorizontalLayout {
                                     alignment: end;
                                     Rectangle {
@@ -340,7 +340,7 @@ export component AppWindow inherits Window {
                                             source: @image-url("assets/log-out.svg"); 
                                             width: 18px; height: 18px; image-fit: contain;
                                             opacity: logout_ta.has-hover ? 1.0 : 0.7;
-                                            colorize: logout_ta.has-hover ? #FF3366 : Theme.text-secondary;
+                                            colorize: logout_ta.has-hover ? #FF3366 : Theme.text-secondary; // FIXED: Added vector layout color tinting tracker
                                             animate opacity { duration: 125ms; }
                                         }
                                         logout_ta := TouchArea { clicked => { root.request_logout(); } }
@@ -349,9 +349,12 @@ export component AppWindow inherits Window {
                             }
                         }
                     }
+                    
+                    // FIXED UI/UX: Vertical spacer pins profile summary up top rather than sinking to page baseline
                     Rectangle { vertical-stretch: 1; }
                 }
 
+                // --- TAB 2: ADVANCED OPERATIONS MATRIX ---
                 if (root.active_tab == "operations") : VerticalLayout {
                     spacing: 24px;
                     Text { text: "Multi-Node Matrix Routing"; font-size: 32px; font-weight: 800; color: Theme.text-primary; letter-spacing: -0.5px; }
@@ -391,68 +394,15 @@ export component AppWindow inherits Window {
 
                             Rectangle { height: 1px; background: Theme.border-color; }
 
-                            // WORKSPACE: GPFFP (EXCLUSIVELY TUNED FOR STRICT REGD_NO SEARCH PARAMETER DISCOVERY)
-                            if (root.op_target_schema == "gpffp" && root.schema_access.gpffp) : VerticalLayout {
-                                spacing: 16px;
-                                
-                                Rectangle {
-                                    background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.brand-primary; drop-shadow-blur: 15px; drop-shadow-color: #00E5FF1A;
-                                    VerticalLayout {
-                                        padding: 30px; spacing: 20px;
-                                        Text { text: "GPF FINAL PAYMENT SYSTEM - REGD_NO EXCLUSIVE DISCOVERY CONSOLE"; font-size: 16px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 1px; }
-                                        
-                                        HorizontalLayout { 
-                                            spacing: 15px;
-                                            VerticalLayout { 
-                                                spacing: 4px; horizontal-stretch: 1; 
-                                                Text { text: "TARGET REGISTRATION NUMBER (REGD_NO)"; font-size: 11px; font-weight: 800; color: Theme.text-secondary; } 
-                                                LineEdit { text <=> root.op_regd_no; placeholder_text: "Enter exact REGD_NO identity parameter..."; height: 38px; } 
-                                            } 
-                                        }
-
-                                        HorizontalLayout {
-                                            spacing: 15px;
-                                            Button {
-                                                text: "🔍  Discover Case Profile Natively";
-                                                height: 42px;
-                                                horizontal-stretch: 1;
-                                                clicked => { root.request_find_gpf_case(root.op_regd_no); }
-                                            }
-                                        }
-                                    }
-                                }
-
-                                // DYNAMIC DETAILS MONITOR PANEL FOR REVEALED PROFILE RECORDS
-                                if (root.gpf_case_found) : Rectangle {
-                                    background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color; drop-shadow-blur: 15px; drop-shadow-color: #00000033;
-                                    VerticalLayout {
-                                        padding: 25px; spacing: 18px;
-                                        Text { text: "DISCOVERED FILE PROFILE META ATTRIBUTES"; font-size: 13px; font-weight: 900; color: Theme.brand-warning; letter-spacing: 0.5px; }
-                                        
-                                        HorizontalLayout {
-                                            spacing: 20px;
-                                            VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "REGISTRATION NUMBER"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.active_gpf_case.regd_no; font-size: 14px; font-weight: 800; color: Theme.text-primary; } }
-                                            VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "ACCOUNT HOLDER NAME"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.active_gpf_case.holder_name; font-size: 14px; font-weight: 800; color: Theme.text-primary; } }
-                                            VerticalLayout { spacing: 4px; width: 100px; Text { text: "SERIES ID"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.active_gpf_case.series_id; font-size: 14px; font-weight: 800; color: Theme.brand-primary; } }
-                                            VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "ACCOUNT NUMBER"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.active_gpf_case.account_no; font-size: 14px; font-weight: 800; color: Theme.brand-primary; } }
-                                        }
-
-                                        HorizontalLayout {
-                                            spacing: 20px;
-                                            VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "CLOSING LEDGER BALANCE"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: "₹ " + root.active_gpf_case.balance; font-size: 16px; font-weight: 900; color: Theme.brand-success; } }
-                                            VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "APPLICATION LIFECYCLE STATUS"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.active_gpf_case.status; font-size: 14px; font-weight: 800; color: Theme.brand-warning; } }
-                                        }
-
-                                        Rectangle { height: 1px; background: Theme.border-color; opacity: 0.3; }
-
-                                        Text { text: "TRANSACTIONAL DESTRUCTION PRIVILEGES"; font-size: 11px; font-weight: 800; color: Theme.brand-danger; }
-                                        HorizontalLayout { 
-                                            spacing: 15px;
-                                            Button { text: "Delete Full Case"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_full_case(root.active_gpf_case.regd_no, root.active_gpf_case.series_id, root.active_gpf_case.account_no); } } 
-                                            Button { text: "Delete Application"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_application(root.active_gpf_case.regd_no); } } 
-                                            Button { text: "Delete Pre-Calculation"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_precalc(root.active_gpf_case.regd_no); } } 
-                                        }
-                                    }
+                            // WORKSPACE: GPFFP
+                            if (root.op_target_schema == "gpffp" && root.schema_access.gpffp) : Rectangle {
+                                background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.brand-primary; drop-shadow-blur: 15px; drop-shadow-color: #00E5FF1A;
+                                VerticalLayout {
+                                    padding: 30px; spacing: 20px;
+                                    Text { text: "GPF FINAL PAYMENT SYSTEM - COMMAND CONSOLE"; font-size: 16px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 1px; }
+                                    HorizontalLayout { spacing: 15px; VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "REGD NO"; font-size: 11px; font-weight: 800; color: Theme.text-secondary; } LineEdit { text <=> root.op_regd_no; placeholder_text: "Enter REGD_NO"; height: 38px; } } VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "SERIES ID"; font-size: 11px; font-weight: 800; color: Theme.text-secondary; } LineEdit { text <=> root.op_series_id; placeholder_text: "Enter SERIES_ID"; height: 38px; } } VerticalLayout { spacing: 4px; horizontal-stretch: 1; Text { text: "ACCOUNT NO"; font-size: 11px; font-weight: 800; color: Theme.text-secondary; } LineEdit { text <=> root.op_account_no; placeholder_text: "Enter ACCOUNT_NO"; height: 38px; } } }
+                                    Text { text: "TRANSACTIONAL TRIGGERS"; font-size: 11px; font-weight: 800; color: Theme.brand-warning; }
+                                    HorizontalLayout { spacing: 15px; Button { text: "Delete Full Case"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_full_case(root.op_regd_no, root.op_series_id, root.op_account_no); } } Button { text: "Delete Application"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_application(root.op_regd_no); } } Button { text: "Delete Pre-Calculation"; height: 42px; horizontal-stretch: 1; clicked => { root.request_delete_precalc(root.op_regd_no); } } }
                                 }
                             }
 

@@ -251,60 +251,13 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- GPFFP CASE PROFILE ADVANCED DISCOVERY matrix CONNECTOR ---
-    let app_weak_find = app.as_weak();
-    let oracle_find = Arc::clone(&oracle_client);
-    app.on_request_find_gpf_case(move |regd_no, holder_name, series_id, account_no| {
-        let ui_weak = app_weak_find.clone();
-        let oracle = Arc::clone(&oracle_find);
-        let (r_no, h_name, s_id, a_no) = (regd_no.to_string(), holder_name.to_string(), series_id.to_string(), account_no.to_string());
-        
-        tokio::spawn(async move {
-            // Executing dynamic verification queries across the Oracle fp_application data model
-            match oracle.gpffp_find_case_profile(&r_no, &h_name, &s_id, &a_no).await {
-                Ok(Some(record)) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_gpf_case_found(true);
-                        ui.set_op_is_error(false);
-                        ui.set_op_status_msg("SUCCESS: GPF Case entity located.".into());
-                        ui.set_active_gpf_case(GpfCaseDetails {
-                            regd_no: record.regd_no.into(),
-                            holder_name: record.acc_holder_name.into(),
-                            series_id: record.series_id.into(),
-                            account_no: record.account_no.into(),
-                            balance: record.closing_balance.to_string().into(),
-                            status: record.current_status.into(),
-                        });
-                    }).unwrap();
-                }
-                Ok(None) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_gpf_case_found(false);
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg("Discovery Fault: No matching records found in fp_application table.".into());
-                    }).unwrap();
-                }
-                Err(e) => {
-                    slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_gpf_case_found(false);
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg(format!("ORACLE TRANSACTION FAILURE: {:?}", e).into());
-                    }).unwrap();
-                }
-            }
-        });
-    });
-
     // --- GPFFP ORACLE OPERATIONS CHANNEL MATRIX ---
     let app_weak_op1 = app.as_weak(); let oracle_op1 = Arc::clone(&oracle_client);
     app.on_request_delete_full_case(move |regd_no, series_id, account_no| {
         let ui_weak = app_weak_op1.clone(); let oracle = Arc::clone(&oracle_op1); let (r_no, s_id, a_no) = (regd_no.to_string(), series_id.to_string(), account_no.to_string());
         tokio::spawn(async move {
             match oracle.gpffp_delete_full_case(&r_no, &s_id, &a_no).await {
-                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Full Case cleared.".into()); ui.set_op_regd_no("".into()); ui.set_op_series_id("".into()); ui.set_op_account_no("".into()); ui.set_gpf_case_found(false); }).unwrap(),
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Full Case cleared.".into()); ui.set_op_regd_no("".into()); ui.set_op_series_id("".into()); ui.set_op_account_no("".into()); }).unwrap(),
                 Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });
@@ -315,7 +268,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         let ui_weak = app_weak_op2.clone(); let oracle = Arc::clone(&oracle_op2); let r_no = regd_no.to_string();
         tokio::spawn(async move {
             match oracle.gpffp_delete_from_application(&r_no).await {
-                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Application Record purged.".into()); ui.set_op_regd_no("".into()); ui.set_gpf_case_found(false); }).unwrap(),
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Application Record purged.".into()); ui.set_op_regd_no("".into()); }).unwrap(),
                 Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });
@@ -326,7 +279,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         let ui_weak = app_weak_op3.clone(); let oracle = Arc::clone(&oracle_op3); let r_no = regd_no.to_string();
         tokio::spawn(async move {
             match oracle.gpffp_delete_from_pre_calculation(&r_no).await {
-                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Pre-Calculation values updated.".into()); ui.set_op_regd_no("".into()); ui.set_gpf_case_found(false); }).unwrap(),
+                Ok(_) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: GPFFP Pre-Calculation values updated.".into()); ui.set_op_regd_no("".into()); }).unwrap(),
                 Err(e) => slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("GPFFP TRANSACTION FAILURE: {}", e).into()); }).unwrap(),
             }
         });

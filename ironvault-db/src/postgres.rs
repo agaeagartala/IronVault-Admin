@@ -132,7 +132,6 @@ impl PostgresConnection {
 
         Ok(log.id)
     }
-    
 
     /// Run database migrations
     pub async fn migrate(&self) -> Result<(), DbError> {

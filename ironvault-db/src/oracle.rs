@@ -14,17 +14,6 @@ pub enum OracleTarget {
     Penindex,
 }
 
-// --- DATA RETRIEVAL BRIDGE STRUCTURE ---
-#[derive(Debug, Clone)]
-pub struct GpfCaseRecord {
-    pub regd_no: String,
-    pub acc_holder_name: String,
-    pub series_id: String,
-    pub account_no: String,
-    pub closing_balance: f64,
-    pub current_status: String,
-}
-
 pub struct OracleConnection {
     pool_gpffp: oracle::pool::Pool,
     pool_vlcs: oracle::pool::Pool,
@@ -89,75 +78,13 @@ impl OracleConnection {
         }
     }
 
-    /// WORKLOAD: GPFFP Specific Task - Search and Discover Case Profiles from FP_APPLICATION
-    pub async fn gpffp_find_case_profile(
-        &self, 
-        regd_no: &str, 
-        holder_name: &str, 
-        series_id: &str, 
-        account_no: &str
-    ) -> Result<Option<GpfCaseRecord>, String> {
-        let r_no = regd_no.trim().to_string();
-        let h_name = if holder_name.is_empty() { String::new() } else { format!("%{}%", holder_name.trim()) };
-        let s_id = series_id.trim().to_string();
-        let a_no = account_no.trim().to_string();
-
-        let conn = self.get_connection(OracleTarget::Gpffp)?;
-
-        tokio::task::spawn_blocking(move || {
-            // FIXED: Using clear explicit named parameters to allow independent any-field multi-variable matching groups
-            let query = "
-                SELECT REGD_NO, ACC_HOLDER_NAME, SERIES_ID, ACCOUNT_NO, SANCTION_AMOUNT, STATUS 
-                FROM FP_APPLICATION 
-                WHERE (REGD_NO = :regd_no )
-                 ";
-
-            let p_regd = if r_no.is_empty() { None } else { Some(r_no.as_str()) };
-            let p_name = if h_name.is_empty() { None } else { Some(h_name.as_str()) };
-            let p_series = if s_id.is_empty() { None } else { Some(s_id.as_str()) };
-            let p_acc = if a_no.is_empty() { None } else { Some(a_no.as_str()) };
-
-            let mut stmt = conn.statement(query).build().map_err(|e| e.to_string())?;
-            
-            // FIXED: Using named binding to cleanly map elements without position dependency constraints
-            let rows = stmt.query_named(&[
-                ("regd_no", &p_regd),
-                ("acc_holder_name", &p_name),
-                ("series_id", &p_series),
-                ("account_no", &p_acc),
-            ]).map_err(|e| e.to_string())?;
-
-            for row_result in rows {
-                let row = row_result.map_err(|e| e.to_string())?;
-                
-                let regd: String = row.get(0).map_err(|e| e.to_string())?;
-                let holder: String = row.get(1).map_err(|e| e.to_string())?;
-                let series: String = row.get(2).map_err(|e| e.to_string())?;
-                let acc_num: String = row.get(3).map_err(|e| e.to_string())?;
-                let balance: f64 = row.get(4).unwrap_or(0.0);
-                let status: String = row.get(5).unwrap_or_else(|_| "UNKNOWN".to_string());
-
-                return Ok(Some(GpfCaseRecord {
-                    regd_no: regd,
-                    acc_holder_name: holder,
-                    series_id: series,
-                    account_no: acc_num,
-                    closing_balance: balance,
-                    current_status: status,
-                }));
-            }
-            Ok(None)
-        })
-        .await
-        .unwrap()
-    }
-
     /// WORKLOAD: GPFFP Specific Task - Delete Full Case
     pub async fn gpffp_delete_full_case(&self, regd_no: &str, series_id: &str, account_no: &str) -> Result<(), String> {
         let r_no = regd_no.to_string();
         let s_id = series_id.to_string();
         let a_no = account_no.to_string();
         
+        // Safely acquires the connection directly from the authentic GPFFP pool context
         let conn = self.get_connection(OracleTarget::Gpffp)?;
 
         tokio::task::spawn_blocking(move || {
@@ -168,6 +95,7 @@ impl OracleConnection {
             conn.execute("DELETE FROM FP_MISSING_CREDIT WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
             conn.execute("DELETE FROM FP_ACCOUNT_CALCULATION WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
             
+            // Cross-schema task update targeting VLCS (requires GPFFP to have grants on VLCS.GP_ACCOUNTS)
             conn.execute("UPDATE VLCS.GP_ACCOUNTS SET ACCOUNT_CLOSED_TAG = NULL WHERE SERIES_ID = :1 AND ACCOUNT_NO = :2", &[&s_id, &a_no])
                 .map_err(|e| e.to_string())?;
             
@@ -218,6 +146,7 @@ impl OracleConnection {
 
     /// Real-time health validation across all cluster endpoints
     pub async fn health_check(&self) -> Result<(), String> {
+        // Check one pool from each server to ensure network routing is alive
         for target in &[OracleTarget::Gpffp, OracleTarget::SaiAgartala] {
             let conn = self.get_connection(*target)?;
             let row = conn.query_row("SELECT 1 FROM DUAL", &[]).map_err(|e| e.to_string())?;
