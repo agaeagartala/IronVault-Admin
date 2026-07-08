@@ -1,0 +1,125 @@
+// Futuristic theme with color palettes and font definitions
+
+// Color Palette - Dark Neon
+export global Theme {
+    // --- VIBRANT PREMIUM BRAND TOKENS ---
+    in-out property <color> brand-primary: #00E5FF; // High-energy Neon Cyan
+    in-out property <color> brand-success: #00FF9D; // Bright Mint Green
+    in-out property <color> brand-warning: #FFB800; // Vivid Gold
+    in-out property <color> brand-danger: #FF3366;  // Punchy Crimson
+    
+    // --- DEEP RICH BACKGROUNDS ---
+    in-out property <color> bg-main: #050507;       // Deepest Void Black
+    in-out property <color> bg-sidebar: #0B0D12;    // Distinct Edge Material
+    in-out property <color> bg-card: #11141A;       // Elevated Surface
+    in-out property <color> bg-card-hover: #1A1E26; // Interactive Surface Glow
+    
+    // --- CRISP HIGH-CONTRAST BORDERS ---
+    in-out property <color> border-color: #242938;
+    in-out property <color> border-dark: #181C26;
+    
+    // --- ILLUMINATED TYPOGRAPHY ---
+    in-out property <color> text-primary: #FFFFFF;   // Pure White
+    in-out property <color> text-secondary: #E2E8F0; // Very Light Crisp Gray
+    in-out property <color> text-muted: #94A3B8;     // Clean Mid-Gray
+    in-out property <color> text-dark: #64748B;
+
+    in-out property <length> input-height: 34px;
+    in-out property <length> button-height: 42px;
+    in-out property <length> corner-radius: 12px;
+
+    // --- LEGACY NEON THEME TOKENS ---
+    in-out property <color> primary: #00d4ff;
+    in-out property <color> primary_dark: #0099cc;
+    in-out property <color> secondary: #ff00ff;
+    in-out property <color> secondary_light: #ff66ff;
+    in-out property <color> bg_primary: #0a0e27;
+    in-out property <color> bg_secondary: #1a1f3a;
+    in-out property <color> bg_tertiary: #2d3561;
+    in-out property <color> bg_surface: #151a32;
+    in-out property <color> success: #00ff41;
+    in-out property <color> error: #ff0033;
+    in-out property <color> accent_border: #00d4ff;
+    in-out property <length> font_size_small: 12px;
+    in-out property <length> font_size_base: 14px;
+    in-out property <length> font_size_large: 16px;
+    in-out property <length> font_size_xlarge: 20px;
+    in-out property <length> spacing_sm: 8px;
+    in-out property <length> spacing_md: 16px;
+    in-out property <length> spacing_lg: 24px;
+    in-out property <length> radius_md: 8px;
+    in-out property <length> radius_lg: 16px;
+}
+
+export component NeonButton {
+    in-out property <string> text;
+    in-out property <bool> primary;
+    callback clicked();
+    
+    Rectangle {
+        background: primary ? Theme.primary : Theme.secondary;
+        border_radius: Theme.radius_md;
+        border_width: 2px;
+        border_color: primary ? Theme.primary : Theme.secondary;
+        
+        HorizontalLayout {
+            alignment: center;
+            Text {
+                text: root.text;
+                color: Theme.bg_primary;
+                font_weight: 700;
+            }
+        }
+        TouchArea { clicked => { root.clicked(); } }
+    }
+}
+
+export component NeonInput {
+    in-out property <string> placeholder_text;
+    in-out property <string> input_value;
+    in-out property <bool> is_password;
+    
+    Rectangle {
+        background: Theme.bg_surface;
+        border_radius: Theme.radius_md;
+        border_width: 1px;
+        border_color: Theme.accent_border;
+        
+        if (root.input_value == "") : Text {
+            text: root.placeholder_text;
+            color: Theme.text_secondary;
+            vertical_alignment: center;
+            x: 10px;
+        }
+        
+        TextInput {
+            text <=> root.input_value;
+            color: Theme.text_primary;
+            font_size: Theme.font_size_base;
+            vertical_alignment: center;
+            x: 10px;
+            width: parent.width - 20px;
+        }
+    }
+}
+
+export component NeonCard {
+    in-out property <string> title;
+    Rectangle {
+        background: Theme.bg_secondary;
+        border_radius: Theme.radius_lg;
+        border_width: 1px;
+        border_color: Theme.primary_dark;
+        
+        VerticalLayout {
+            spacing: Theme.spacing_md;
+            padding: Theme.spacing_lg;
+            if (title != "") : Text {
+                text: root.title;
+                color: Theme.text_primary;
+                font_size: Theme.font_size_large;
+                font_weight: 600;
+            }
+        }
+    }
+}

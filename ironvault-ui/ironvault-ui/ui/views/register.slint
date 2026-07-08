@@ -1,0 +1,114 @@
+// Register view - New user onboarding
+
+import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+
+export struct RegisterFormFields {
+    username: string,
+    secret: string,
+    first-name: string,
+    middle-name: string,
+    last-name: string,
+    designation: string,
+    section: string,
+    captcha-result: string,
+}
+
+export component RegisterView inherits Rectangle {
+    in property <string> captcha-question;
+    in property <string> operational-error;
+    
+    // Two-way exposed structural state interface data map
+    in-out property <RegisterFormFields> form-data;
+    
+    callback submit-registration();
+    callback cancel-registration();
+
+    background: transparent;
+
+    VerticalBox {
+        padding: 0px;
+        spacing: 16px;
+
+        // Section A: Human Profile Entry Matrix
+        VerticalBox {
+            spacing: 14px;
+            HorizontalBox {
+                spacing: 12px;
+                VerticalBox { 
+                    spacing: 4px; horizontal-stretch: 1; 
+                    Text { text: "FIRST NAME"; font-size: 9px; color: Theme.text-secondary; font-weight: 800; } 
+                    LineEdit { text <=> root.form-data.first-name; placeholder_text: "First"; height: Theme.input-height; } 
+                }
+                VerticalBox { 
+                    spacing: 4px; horizontal-stretch: 1; 
+                    Text { text: "MIDDLE NAME"; font-size: 9px; color: Theme.text-secondary; font-weight: 800; } 
+                    LineEdit { text <=> root.form-data.middle-name; placeholder_text: "Middle"; height: Theme.input-height; } 
+                }
+                VerticalBox { 
+                    spacing: 4px; horizontal-stretch: 1; 
+                    Text { text: "LAST NAME"; font-size: 9px; color: Theme.text-secondary; font-weight: 800; } 
+                    LineEdit { text <=> root.form-data.last-name; placeholder_text: "Last"; height: Theme.input-height; } 
+                }
+            }
+            HorizontalBox {
+                spacing: 12px;
+                VerticalBox { 
+                    spacing: 4px; horizontal-stretch: 1; 
+                    Text { text: "OFFICIAL DESIGNATION"; font-size: 9px; color: Theme.text-secondary; font-weight: 800; } 
+                    LineEdit { text <=> root.form-data.designation; placeholder_text: "e.g., Lead Engineer"; height: Theme.input-height; } 
+                }
+                VerticalBox { 
+                    spacing: 4px; horizontal-stretch: 1; 
+                    Text { text: "WORKSPACE SECTION"; font-size: 9px; color: Theme.text-secondary; font-weight: 800; } 
+                    LineEdit { text <=> root.form-data.section; placeholder_text: "e.g., Threat Intel"; height: Theme.input-height; } 
+                }
+            }
+        }
+
+        // Section B: Account Credentials
+        VerticalBox {
+            spacing: 4px;
+            Text { text: "OPERATOR IDENTITY ACCOUNT"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+            LineEdit { text <=> root.form-data.username; placeholder_text: "Enter identity sequence..."; height: 36px; }
+        }
+        
+        VerticalBox {
+            spacing: 4px;
+            Text { text: "CRYPTOGRAPHIC ACCESS SIGNATURE"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+            LineEdit { text <=> root.form-data.secret; placeholder_text: "Enter token secret..."; input-type: password; height: 36px; }
+        }
+        
+        // Section C: Challenge Matrix verification field
+        VerticalBox {
+            spacing: 4px;
+            Text { text: "SECURITY CHALLENGE MATRIX"; font-size: 10px; color: Theme.text-secondary; font-weight: 800; }
+            HorizontalBox {
+                spacing: 12px;
+                Rectangle {
+                    background: Theme.border-color; border-radius: 4px; horizontal-stretch: 1; height: 36px;
+                    Text { text: "Solve Sequence: " + root.captcha-question; font-size: 12px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; horizontal-alignment: center; }
+                }
+                LineEdit { text <=> root.form-data.captcha-result; width: 110px; height: 36px; placeholder_text: "Result"; }
+            }
+        }
+
+        if (root.operational-error != "") : Rectangle {
+            background: #7F1D1D33; border-radius: 6px; border-width: 1px; border-color: Theme.brand-danger;
+            HorizontalBox { padding: 8px; Text { text: root.operational-error; color: #FCA5A5; font-size: 12px; font-weight: 600; wrap: word-wrap; horizontal-alignment: center; } }
+        }
+
+        // Section D: Form Dispatch and Routing Triggers
+        HorizontalBox {
+            spacing: 14px; padding-top: 18px; 
+            Button {
+                text: "Commit Enrollment"; height: Theme.button-height; horizontal-stretch: 1;
+                clicked => { root.submit-registration(); }
+            }
+            Button {
+                text: "Return to Gateway"; height: Theme.button-height; horizontal-stretch: 1;
+                clicked => { root.cancel-registration(); }
+            }
+        }
+    }
+}

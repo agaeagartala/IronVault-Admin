@@ -1,0 +1,35 @@
+// Dashboard view - Primary data metrics and information
+
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+export component DashboardView inherits Rectangle {
+    background: #0B0F19;
+    
+    VerticalBox {
+        padding: 25px;
+        spacing: 20px;
+        
+        Text { text: "SYSTEM OVERVIEW"; font-size: 22px; font-weight: 800; color: white; }
+        
+        HorizontalBox {
+            spacing: 20px;
+            height: 120px;
+            
+            Rectangle { background: #111827; border-radius: 8px; border-width: 1px; border-color: #10B981; VerticalBox { padding: 15px; Text { text: "LIVE NODES"; color: #10B981; font-weight: 700; } Text { text: "3 Active"; color: white; font-size: 24px; } } }
+            Rectangle { background: #111827; border-radius: 8px; border-width: 1px; border-color: #38BDF8; VerticalBox { padding: 15px; Text { text: "ENCRYPTION"; color: #38BDF8; font-weight: 700; } Text { text: "AES-256 (Secure)"; color: white; font-size: 20px; } } }
+            Rectangle { background: #111827; border-radius: 8px; border-width: 1px; border-color: #6366F1; VerticalBox { padding: 15px; Text { text: "AUDIT LOGS"; color: #6366F1; font-weight: 700; } Text { text: "Verified & Immutable"; color: white; font-size: 16px; } } }
+        }
+        
+        Rectangle {
+            background: #111827;
+            border-radius: 8px;
+            border-width: 1px;
+            border-color: #1F2937;
+            
+            VerticalBox {
+                padding: 20px;
+                Text { text: "Security Matrix Terminal..."; color: #9CA3AF; font-family: "Consolas"; }
+            }
+        }
+    }
+}

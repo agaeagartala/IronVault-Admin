@@ -1,0 +1,23 @@
+# Ignore dependency folders
+node_modules/
+
+# Ignore local environment variables/secrets
+.env
+*.local
+Roadmap.md
+
+
+# Ignore OS-specific files
+Thumbs.db
+.DS_Store
+
+# Ignore build artifacts/compiled logs
+dist/
+build/
+*.log
+
+# Ignore IDE/editor-specific files
+.vscode/
+
+# Ignore Rust-specific files
+target/
