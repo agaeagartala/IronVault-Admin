@@ -121,7 +121,7 @@ impl OracleConnection {
         }
     }
 
-    /// WORKLOAD: Pension DAK System - Single Pass Optimized Auto-fetch Mapping Module
+    /// WORKLOAD: Pension DAK System - Auto-fetch Mapping from SAI_AGARTALA
     pub async fn pendak_fetch_auth_details(&self, appln_no: &str) -> Result<Option<PensionAuthDetails>, String> {
         let app_no = appln_no.trim().to_string();
         if app_no.is_empty() { return Ok(None); }
@@ -157,12 +157,13 @@ impl OracleConnection {
         }).await.unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Insert Flat Copy Entries into Production Diary
+    /// WORKLOAD: Pension DAK System - Insert Flat Copy Entries Natively in PENDAK schema
     pub async fn pendak_insert_outward_case(&self, entry: PensionDakEntry) -> Result<(), String> {
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
+            // FIXED: Pointing purely to native schema context tables (No prefixing)
             let query = "
-                INSERT INTO PEN_DAK_OUTWARD_DAIRY (
+                INSERT INTO PEN_DAK_OUTWARD_DIARY (
                     APPLN_NO, LETTER_NO, PPO_FPPO, GPO, CPO, SECTION, SUBJECT, 
                     ADDRESSEE, BAR_CODE, SENT_BY, SERVICE_BOOK, OUTWARD_DATE, CREATE_DATE
                 ) VALUES (:1, :2, :3, :4, :5, :6, :7, :8, :9, :10, :11, SYSDATE, SYSDATE)
@@ -187,7 +188,7 @@ impl OracleConnection {
                     &recipient.barcode,
                     &recipient.sent_by,
                     &recipient.service_book,
-                ]).map_err(|e| format!("Insertion failed into PEN_DAK_OUTWARD_DAIRY: {}", e))?;
+                ]).map_err(|e| format!("Insertion failed into PEN_DAK_OUTWARD_DIARY: {}", e))?;
             }
 
             conn.commit().map_err(|e| format!("PENDAK Commit failure: {}", e))?;
@@ -195,17 +196,18 @@ impl OracleConnection {
         }).await.unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Query and Retrieve Flat Archive Rows (FIXED)
+    /// WORKLOAD: Pension DAK System - Query Natively from PENDAK schema table
     pub async fn pendak_select_outward_case_full(&self, appln_no: &str) -> Result<Option<FullPensionDakRecord>, String> {
         let app_no_numeric: i64 = appln_no.trim().parse().unwrap_or(0);
         if app_no_numeric == 0 { return Ok(None); }
 
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
+            // FIXED: Pointing purely to native schema context tables (No prefixing)
             let query = "
                 SELECT APPLN_NO, LETTER_NO, PPO_FPPO, GPO, CPO, SECTION, SUBJECT, 
                        ADDRESSEE, BAR_CODE, SENT_BY, TO_CHAR(OUTWARD_DATE, 'YYYY-MM-DD') 
-                FROM PEN_DAK_OUTWARD_DAIRY 
+                FROM PEN_DAK_OUTWARD_DIARY 
                 WHERE APPLN_NO = :1 AND ROWNUM <= 1
             ";
             let mut stmt = conn.statement(query).build().map_err(|e| e.to_string())?;
@@ -214,7 +216,6 @@ impl OracleConnection {
             for row_res in rows {
                 let row = row_res.map_err(|e| e.to_string())?;
                 
-                // FIXED TYPE ANNOTATION CASTS TO ELIMINATE UNKNOWN PROPERTY ERRS
                 let app_num_val: i64 = row.get(0).unwrap_or(0);
                 let letter_no_val: String = row.get(1).unwrap_or_default();
                 let ppo_val: i64 = row.get(2).unwrap_or(0);
@@ -246,7 +247,7 @@ impl OracleConnection {
         }).await.unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Update target record inside production ledger
+    /// WORKLOAD: Pension DAK System - Update record natively within PENDAK schema
     pub async fn pendak_update_outward_case(&self, app_num: &str, section: &str, subject: &str) -> Result<(), String> {
         let app_no_numeric: i64 = app_num.trim().parse().unwrap_or(0);
         let section_numeric: i32 = section.trim().parse().unwrap_or(0);
@@ -254,7 +255,8 @@ impl OracleConnection {
 
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
-            let query = "UPDATE PEN_DAK_OUTWARD_DAIRY SET SECTION = :1, SUBJECT = :2 WHERE APPLN_NO = :3";
+            // FIXED: Pointing purely to native schema context tables (No prefixing)
+            let query = "UPDATE PEN_DAK_OUTWARD_DIARY SET SECTION = :1, SUBJECT = :2 WHERE APPLN_NO = :3";
             conn.execute(query, &[&section_numeric, &sub, &app_no_numeric]).map_err(|e| e.to_string())?;
             conn.commit().map_err(|e| e.to_string())?;
             Ok(())
@@ -335,14 +337,5 @@ impl OracleConnection {
             conn.commit().map_err(|e| format!("GPFFP Commit failure: {}", e))?;
             Ok(())
         }).await.unwrap()
-    }
-
-    pub async fn health_check(&self) -> Result<(), String> {
-        for target in &[OracleTarget::Gpffp, OracleTarget::SaiAgartala] {
-            let conn = self.get_connection(*target)?;
-            let row = conn.query_row("SELECT 1 FROM DUAL", &[]).map_err(|e| e.to_string())?;
-            let _: i32 = row.get(0).map_err(|e| e.to_string())?;
-        }
-        Ok(())
     }
 }

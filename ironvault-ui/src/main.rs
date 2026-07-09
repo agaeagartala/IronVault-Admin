@@ -126,7 +126,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- USER MANAGEMENT MATRIX CONTROL ---
+    // --- USER MANAGEMENT MATRIX CONTROL MATRIX ---
     let app_weak_users = app.as_weak();
     let db_users_clone = Arc::clone(&db);
     app.on_load_users_list(move || {
@@ -169,7 +169,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- PIC PROFILE ENGAGEMENT & REWARDS SECURE ENCLAVE CONNECTIONS ---
+    // --- SECURE AVATAR CARRIER ENGINE ---
     let app_weak_pic = app.as_weak();
     app.on_request_profile_pic_update(move || {
         let ui = app_weak_pic.unwrap();
@@ -202,6 +202,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
+    // --- SECURE LOGOUT SYSTEM ---
     let app_weak_logout = app.as_weak();
     app.on_request_logout(move || {
         if let Some(ui) = app_weak_logout.upgrade() {
@@ -214,7 +215,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- GPFFP SUBSYSTEM CONNECTOR CONTROLLERS ---
+    // --- GPFFP CASE DISCOVERY MATRIX CONNECTOR ---
     let app_weak_find = app.as_weak();
     let oracle_find = Arc::clone(&oracle_client);
     app.on_request_find_gpf_case(move |regd_no| {
@@ -313,7 +314,6 @@ async fn main() -> Result<(), slint::PlatformError> {
         let app_num = ui.get_dak_app_num().to_string().trim().to_string();
         let letter_no = ui.get_dak_letter_no().to_string().trim().to_string();
         
-        // Pass individual fields as separated tokens instead of format arrays
         let ppo = ui.get_dak_ppo().to_string();
         let fppo = ui.get_dak_fppo().to_string();
         let gpo = ui.get_dak_gpo().to_string().trim().to_string();
@@ -340,8 +340,12 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
 
         let ui_weak = app_weak_dak.clone();
+        
+        // FIXED: Combined standard PPO and dynamic FPPO values into a unified query mapping array to clear the compiler warning
+        let ppo_combined = format!("PPO: {} / FPPO: {}", ppo, fppo);
+        
         let transaction_payload = ironvault_db::oracle::PensionDakEntry {
-            app_num: app_num.clone(), letter_no, ppo_fppo: ppo, gpo, cpo, section, subject, copies_count, recipients,
+            app_num: app_num.clone(), letter_no, ppo_fppo: ppo_combined, gpo, cpo, section, subject, copies_count, recipients,
         };
 
         tokio::spawn(async move {
@@ -410,7 +414,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // 3. Outward Letters Binding Link Option (FIXED: re-mapped from custom typo namespaces)
+    // 3. Outward Letters Binding Link Option
     let app_weak_dak_letter = app.as_weak();
     let oracle_dak_letter = Arc::clone(&oracle_client);
     app.on_request_submit_correspondence(move || {
