@@ -54,7 +54,7 @@ pub struct PensionAuthDetails {
     pub cpo_no: String,
 }
 
-// --- PRODUCTION COMPATIBLE RETRIEVAL LAYOUT ---
+// --- PRODUCTION COMPATIBLE RETRIEVAL LAYOUT STRUCTURE ---
 #[derive(Debug, Clone, Default)]
 pub struct FullPensionDakRecord {
     pub app_num: String,
@@ -85,27 +85,41 @@ impl OracleConnection {
     /// Initialize all 7 discrete schema connection pools across both network clusters
     pub fn new() -> Result<Self, String> {
         let tns_100 = "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.100.247)(PORT=1521))(CONNECT_DATA=(SID=db11g)))";
-        
+
         let pool_gpffp = oracle::pool::PoolBuilder::new("gpffp", "gpffp", tns_100)
-            .build().map_err(|e| format!("gpffp node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("gpffp node link failure: {}", e))?;
         let pool_vlcs = oracle::pool::PoolBuilder::new("vlcs", "vlcs", tns_100)
-            .build().map_err(|e| format!("vlcs node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("vlcs node link failure: {}", e))?;
         let pool_agtall = oracle::pool::PoolBuilder::new("agtall", "agtall", tns_100)
-            .build().map_err(|e| format!("agtall node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("agtall node link failure: {}", e))?;
         let pool_agdak = oracle::pool::PoolBuilder::new("agdak", "agdak", tns_100)
-            .build().map_err(|e| format!("agdak node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("agdak node link failure: {}", e))?;
 
         let tns_0 = "(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=192.168.0.140)(PORT=1521))(CONNECT_DATA=(SID=orcl)))";
-        
-        let pool_sai_agartala = oracle::pool::PoolBuilder::new("sai_agartala", "sai_agartala", tns_0)
-            .build().map_err(|e| format!("sai_agartala node link failure: {}", e))?;
+
+        let pool_sai_agartala =
+            oracle::pool::PoolBuilder::new("sai_agartala", "sai_agartala", tns_0)
+                .build()
+                .map_err(|e| format!("sai_agartala node link failure: {}", e))?;
         let pool_pendak = oracle::pool::PoolBuilder::new("pendak", "pendak", tns_0)
-            .build().map_err(|e| format!("pendak node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("pendak node link failure: {}", e))?;
         let pool_penindex = oracle::pool::PoolBuilder::new("penindex", "penindex", tns_0)
-            .build().map_err(|e| format!("penindex node link failure: {}", e))?;
+            .build()
+            .map_err(|e| format!("penindex node link failure: {}", e))?;
 
         Ok(Self {
-            pool_gpffp, pool_vlcs, pool_agtall, pool_agdak, pool_sai_agartala, pool_pendak, pool_penindex,
+            pool_gpffp,
+            pool_vlcs,
+            pool_agtall,
+            pool_agdak,
+            pool_sai_agartala,
+            pool_pendak,
+            pool_penindex,
         })
     }
 
@@ -121,10 +135,15 @@ impl OracleConnection {
         }
     }
 
-    /// WORKLOAD: Pension DAK System - Auto-fetch Mapping from SAI_AGARTALA
-    pub async fn pendak_fetch_auth_details(&self, appln_no: &str) -> Result<Option<PensionAuthDetails>, String> {
+    /// WORKLOAD: Pension DAK System - Auto-fetch Parameters from SAI_AGARTALA
+    pub async fn pendak_fetch_auth_details(
+        &self,
+        appln_no: &str,
+    ) -> Result<Option<PensionAuthDetails>, String> {
         let app_no = appln_no.trim().to_string();
-        if app_no.is_empty() { return Ok(None); }
+        if app_no.is_empty() {
+            return Ok(None);
+        }
         let conn = self.get_connection(OracleTarget::Penindex)?;
 
         tokio::task::spawn_blocking(move || {
@@ -136,7 +155,9 @@ impl OracleConnection {
                   AND a.APA_AUTH_TYPE IN ('760', '761', '762', '763')
             ";
             let mut stmt = conn.statement(query).build().map_err(|e| e.to_string())?;
-            let rows = stmt.query_named(&[("app_no", &app_no.as_str())]).map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_named(&[("app_no", &app_no.as_str())])
+                .map_err(|e| e.to_string())?;
 
             let mut details = PensionAuthDetails::default();
             let mut found_any = false;
@@ -153,15 +174,20 @@ impl OracleConnection {
                     _ => {}
                 }
             }
-            if found_any { Ok(Some(details)) } else { Ok(None) }
-        }).await.unwrap()
+            if found_any {
+                Ok(Some(details))
+            } else {
+                Ok(None)
+            }
+        })
+        .await
+        .unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Insert Flat Copy Entries Natively in PENDAK schema
+    /// WORKLOAD: Pension DAK System - Insert Flat Copy Entries into Production Diary
     pub async fn pendak_insert_outward_case(&self, entry: PensionDakEntry) -> Result<(), String> {
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
-            // FIXED: Pointing purely to native schema context tables (No prefixing)
             let query = "
                 INSERT INTO PEN_DAK_OUTWARD_DIARY (
                     APPLN_NO, LETTER_NO, PPO_FPPO, GPO, CPO, SECTION, SUBJECT, 
@@ -176,34 +202,45 @@ impl OracleConnection {
             let section_numeric: i32 = entry.section.parse().unwrap_or(0);
 
             for recipient in entry.recipients.iter() {
-                conn.execute(query, &[
-                    &app_numeric,
-                    &entry.letter_no,
-                    &ppo_numeric,
-                    &gpo_numeric,
-                    &cpo_numeric,
-                    &section_numeric,
-                    &entry.subject,
-                    &recipient.addressee,
-                    &recipient.barcode,
-                    &recipient.sent_by,
-                    &recipient.service_book,
-                ]).map_err(|e| format!("Insertion failed into PEN_DAK_OUTWARD_DIARY: {}", e))?;
+                conn.execute(
+                    query,
+                    &[
+                        &app_numeric,
+                        &entry.letter_no,
+                        &ppo_numeric,
+                        &gpo_numeric,
+                        &cpo_numeric,
+                        &section_numeric,
+                        &entry.subject,
+                        &recipient.addressee,
+                        &recipient.barcode,
+                        &recipient.sent_by,
+                        &recipient.service_book,
+                    ],
+                )
+                .map_err(|e| format!("Insertion failed into PEN_DAK_OUTWARD_DIARY: {}", e))?;
             }
 
-            conn.commit().map_err(|e| format!("PENDAK Commit failure: {}", e))?;
+            conn.commit()
+                .map_err(|e| format!("PENDAK Commit failure: {}", e))?;
             Ok(())
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Query Natively from PENDAK schema table
-    pub async fn pendak_select_outward_case_full(&self, appln_no: &str) -> Result<Option<FullPensionDakRecord>, String> {
+    /// WORKLOAD: Pension DAK System - Query Directly from Native Pool Schema Table
+    pub async fn pendak_select_outward_case_full(
+        &self,
+        appln_no: &str,
+    ) -> Result<Option<FullPensionDakRecord>, String> {
         let app_no_numeric: i64 = appln_no.trim().parse().unwrap_or(0);
-        if app_no_numeric == 0 { return Ok(None); }
+        if app_no_numeric == 0 {
+            return Ok(None);
+        }
 
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
-            // FIXED: Pointing purely to native schema context tables (No prefixing)
             let query = "
                 SELECT APPLN_NO, LETTER_NO, PPO_FPPO, GPO, CPO, SECTION, SUBJECT, 
                        ADDRESSEE, BAR_CODE, SENT_BY, TO_CHAR(OUTWARD_DATE, 'YYYY-MM-DD') 
@@ -212,10 +249,10 @@ impl OracleConnection {
             ";
             let mut stmt = conn.statement(query).build().map_err(|e| e.to_string())?;
             let rows = stmt.query(&[&app_no_numeric]).map_err(|e| e.to_string())?;
-            
+
             for row_res in rows {
                 let row = row_res.map_err(|e| e.to_string())?;
-                
+
                 let app_num_val: i64 = row.get(0).unwrap_or(0);
                 let letter_no_val: String = row.get(1).unwrap_or_default();
                 let ppo_val: i64 = row.get(2).unwrap_or(0);
@@ -244,29 +281,44 @@ impl OracleConnection {
                 }));
             }
             Ok(None)
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 
-    /// WORKLOAD: Pension DAK System - Update record natively within PENDAK schema
-    pub async fn pendak_update_outward_case(&self, app_num: &str, section: &str, subject: &str) -> Result<(), String> {
+    /// WORKLOAD: Pension DAK System - Update target record inside production ledger
+    pub async fn pendak_update_outward_case(
+        &self,
+        app_num: &str,
+        section: &str,
+        subject: &str,
+    ) -> Result<(), String> {
         let app_no_numeric: i64 = app_num.trim().parse().unwrap_or(0);
         let section_numeric: i32 = section.trim().parse().unwrap_or(0);
         let sub = subject.to_string();
 
         let conn = self.get_connection(OracleTarget::Pendak)?;
         tokio::task::spawn_blocking(move || {
-            // FIXED: Pointing purely to native schema context tables (No prefixing)
-            let query = "UPDATE PEN_DAK_OUTWARD_DIARY SET SECTION = :1, SUBJECT = :2 WHERE APPLN_NO = :3";
-            conn.execute(query, &[&section_numeric, &sub, &app_no_numeric]).map_err(|e| e.to_string())?;
+            let query =
+                "UPDATE PEN_DAK_OUTWARD_DIARY SET SECTION = :1, SUBJECT = :2 WHERE APPLN_NO = :3";
+            conn.execute(query, &[&section_numeric, &sub, &app_no_numeric])
+                .map_err(|e| e.to_string())?;
             conn.commit().map_err(|e| e.to_string())?;
             Ok(())
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 
     /// WORKLOAD: GPFFP Task - Search and Discover Case Profiles from FP_APPLICATION
-    pub async fn gpffp_find_case_profile(&self, regd_no: &str) -> Result<Option<GpfCaseRecord>, String> {
+    pub async fn gpffp_find_case_profile(
+        &self,
+        regd_no: &str,
+    ) -> Result<Option<GpfCaseRecord>, String> {
         let r_no = regd_no.trim().to_string();
-        if r_no.is_empty() { return Ok(None); }
+        if r_no.is_empty() {
+            return Ok(None);
+        }
         let conn = self.get_connection(OracleTarget::Gpffp)?;
         tokio::task::spawn_blocking(move || {
             let query = "SELECT REGD_NO, ACC_HOLDER_NAME, SERIES_ID, ACCOUNT_NO, SANCTION_AMOUNT, STATUS FROM FP_APPLICATION WHERE REGD_NO = :regd AND ROWNUM <= 1";
@@ -274,29 +326,30 @@ impl OracleConnection {
             let rows = stmt.query_named(&[("regd", &r_no.as_str())]).map_err(|e| e.to_string())?;
             for row_result in rows {
                 let row = row_result.map_err(|e| e.to_string())?;
-                
-                let regd_val: String = row.get(0).map_err(|e| e.to_string())?;
-                let holder_val: String = row.get(1).map_err(|e| e.to_string())?;
-                let series_val: String = row.get(2).map_err(|e| e.to_string())?;
-                let account_val: String = row.get(3).map_err(|e| e.to_string())?;
-                let balance_val: f64 = row.get(4).unwrap_or(0.0);
-                let status_val: String = row.get(5).unwrap_or_else(|_| "UNKNOWN".to_string());
-
                 return Ok(Some(GpfCaseRecord {
-                    regd_no: regd_val,
-                    acc_holder_name: holder_val,
-                    series_id: series_val,
-                    account_no: account_val,
-                    closing_balance: balance_val,
-                    current_status: status_val,
+                    regd_no: row.get(0).map_err(|e| e.to_string())?,
+                    acc_holder_name: row.get(1).map_err(|e| e.to_string())?,
+                    series_id: row.get(2).map_err(|e| e.to_string())?,
+                    account_no: row.get(3).map_err(|e| e.to_string())?,
+                    closing_balance: row.get(4).unwrap_or(0.0),
+                    current_status: row.get(5).map_err(|e| e.to_string())?,
                 }));
             }
             Ok(None)
         }).await.unwrap()
     }
 
-    pub async fn gpffp_delete_full_case(&self, regd_no: &str, series_id: &str, account_no: &str) -> Result<(), String> {
-        let (r_no, s_id, a_no) = (regd_no.to_string(), series_id.to_string(), account_no.to_string());
+    pub async fn gpffp_delete_full_case(
+        &self,
+        regd_no: &str,
+        series_id: &str,
+        account_no: &str,
+    ) -> Result<(), String> {
+        let (r_no, s_id, a_no) = (
+            regd_no.to_string(),
+            series_id.to_string(),
+            account_no.to_string(),
+        );
         let conn = self.get_connection(OracleTarget::Gpffp)?;
         tokio::task::spawn_blocking(move || {
             conn.execute("DELETE FROM FP_INWARD_DIARY WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
@@ -315,27 +368,69 @@ impl OracleConnection {
         let r_no = regd_no.to_string();
         let conn = self.get_connection(OracleTarget::Gpffp)?;
         tokio::task::spawn_blocking(move || {
-            conn.execute("DELETE FROM FP_APPLICATION WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_MAIN WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_SUBSCRIPTION_DETAILS WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_MISSING_CREDIT WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_ACCOUNT_CALCULATION WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.commit().map_err(|e| format!("GPFFP Commit failure: {}", e))?;
+            conn.execute("DELETE FROM FP_APPLICATION WHERE REGD_NO = :1", &[&r_no])
+                .map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM FP_MAIN WHERE REGD_NO = :1", &[&r_no])
+                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM FP_SUBSCRIPTION_DETAILS WHERE REGD_NO = :1",
+                &[&r_no],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM FP_MISSING_CREDIT WHERE REGD_NO = :1", &[&r_no])
+                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM FP_ACCOUNT_CALCULATION WHERE REGD_NO = :1",
+                &[&r_no],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.commit()
+                .map_err(|e| format!("GPFFP Commit failure: {}", e))?;
             Ok(())
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
     }
 
     pub async fn gpffp_delete_from_pre_calculation(&self, regd_no: &str) -> Result<(), String> {
         let r_no = regd_no.to_string();
         let conn = self.get_connection(OracleTarget::Gpffp)?;
         tokio::task::spawn_blocking(move || {
-            conn.execute("DELETE FROM FP_MAIN WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_SUBSCRIPTION_DETAILS WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_MISSING_CREDIT WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM FP_ACCOUNT_CALCULATION WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.execute("UPDATE FP_APPLICATION SET CALCULATION_DATE = NULL WHERE REGD_NO = :1", &[&r_no]).map_err(|e| e.to_string())?;
-            conn.commit().map_err(|e| format!("GPFFP Commit failure: {}", e))?;
+            conn.execute("DELETE FROM FP_MAIN WHERE REGD_NO = :1", &[&r_no])
+                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM FP_SUBSCRIPTION_DETAILS WHERE REGD_NO = :1",
+                &[&r_no],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM FP_MISSING_CREDIT WHERE REGD_NO = :1", &[&r_no])
+                .map_err(|e| e.to_string())?;
+            conn.execute(
+                "DELETE FROM FP_ACCOUNT_CALCULATION WHERE REGD_NO = :1",
+                &[&r_no],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.execute(
+                "UPDATE FP_APPLICATION SET CALCULATION_DATE = NULL WHERE REGD_NO = :1",
+                &[&r_no],
+            )
+            .map_err(|e| e.to_string())?;
+            conn.commit()
+                .map_err(|e| format!("GPFFP Commit failure: {}", e))?;
             Ok(())
-        }).await.unwrap()
+        })
+        .await
+        .unwrap()
+    }
+
+    pub async fn health_check(&self) -> Result<(), String> {
+        for target in &[OracleTarget::Gpffp, OracleTarget::SaiAgartala] {
+            let conn = self.get_connection(*target)?;
+            let row = conn
+                .query_row("SELECT 1 FROM DUAL", &[])
+                .map_err(|e| e.to_string())?;
+            let _: i32 = row.get(0).map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 }

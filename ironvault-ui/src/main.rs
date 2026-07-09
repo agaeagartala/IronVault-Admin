@@ -126,7 +126,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- USER MANAGEMENT MATRIX CONTROL MATRIX ---
+    // --- USER MANAGEMENT CONTROLS Matrix ---
     let app_weak_users = app.as_weak();
     let db_users_clone = Arc::clone(&db);
     app.on_load_users_list(move || {
@@ -202,7 +202,6 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- SECURE LOGOUT SYSTEM ---
     let app_weak_logout = app.as_weak();
     app.on_request_logout(move || {
         if let Some(ui) = app_weak_logout.upgrade() {
@@ -215,7 +214,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- GPFFP CASE DISCOVERY MATRIX CONNECTOR ---
+    // --- GPFFP CASE DISCOVERY MATRIX LOGIC ---
     let app_weak_find = app.as_weak();
     let oracle_find = Arc::clone(&oracle_client);
     app.on_request_find_gpf_case(move |regd_no| {
@@ -341,7 +340,7 @@ async fn main() -> Result<(), slint::PlatformError> {
 
         let ui_weak = app_weak_dak.clone();
         
-        // FIXED: Combined standard PPO and dynamic FPPO values into a unified query mapping array to clear the compiler warning
+        // RECODED: PPO and FPPO merged into a formatted entry string parameter
         let ppo_combined = format!("PPO: {} / FPPO: {}", ppo, fppo);
         
         let transaction_payload = ironvault_db::oracle::PensionDakEntry {
@@ -427,6 +426,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         let subject = ui.get_dak_subject().to_string().trim().to_string();
         let copies_count: i32 = ui.get_dak_no_of_copies().to_string().parse().unwrap_or(1);
         
+        // FIXED: Exchanged custom string identifier loops for direct database crate paths
         let letter_payload = ironvault_db::oracle::PensionDakEntry {
             app_num: app_num.clone(), letter_no: letter_no.clone(), ppo_fppo: ui.get_dak_ppo().to_string(), gpo: ui.get_dak_gpo().to_string(), cpo: ui.get_dak_cpo().to_string(),
             section: section.clone(), subject: subject.clone(), copies_count,
