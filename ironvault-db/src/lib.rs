@@ -1,8 +1,14 @@
 //! IronVault Database Access Layer
 //! Provides ORM and database operations for PostgreSQL and Oracle
 
+pub mod gpf;
 pub mod oracle;
-pub use oracle::OracleConnection; // Exposes connection struct cleanly to the UI workspace layer
+pub mod pendak;
+pub mod postgres;
+pub mod vlcs;
+
+pub use oracle::OracleConnection;
+pub use postgres::DbClient;
 
 use sqlx::{postgres::PgPoolOptions, PgPool, Row};
 
