@@ -1,4 +1,4 @@
-import { Button, LineEdit } from "std-widgets.slint";
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme, SchemaAction } from "../theme.slint";
 
 export component PenDakView inherits VerticalLayout {
@@ -7,14 +7,13 @@ export component PenDakView inherits VerticalLayout {
     in-out property <bool> op_is_error;
 
     // --- COMPLETE TASK-ISOLATED PARAMETER INPUT FIELDS ---
-    in-out property <string> entry_app_num; 
+    in-out property <string> entry_app_num;
     in-out property <string> entry_letter_no; 
     in-out property <string> entry_section; 
     in-out property <string> entry_subject; 
     in-out property <string> entry_no_of_copies;
     
     in-out property <string> find_app_num;
-    
     in-out property <string> edit_app_num; 
     in-out property <string> edit_section; 
     in-out property <string> edit_subject;
@@ -26,23 +25,30 @@ export component PenDakView inherits VerticalLayout {
     in-out property <string> letter_no_of_copies;
 
     // Auto-fetch context fields
-    in-out property <string> dak_ppo; in-out property <string> dak_fppo; in-out property <string> dak_gpo; in-out property <string> dak_cpo;
+    in-out property <string> dak_ppo; in-out property <string> dak_fppo; in-out property <string> dak_gpo;
+    in-out property <string> dak_cpo;
     in-out property <string> dak_adr_1; in-out property <string> dak_bar_1; in-out property <string> dak_sent_1;
-    in-out property <string> dak_adr_2; in-out property <string> dak_bar_2; in-out property <string> dak_sent_2;
+    in-out property <string> dak_adr_2;
+    in-out property <string> dak_bar_2; in-out property <string> dak_sent_2;
     in-out property <string> dak_adr_3; in-out property <string> dak_bar_3; in-out property <string> dak_sent_3;
 
     // Query result data fields
-    in-out property <bool> dak_case_found; in-out property <string> view_dak_letter; in-out property <string> view_dak_subject; in-out property <string> view_dak_section; in-out property <string> dak_corr_date;
+    in-out property <bool> dak_case_found; in-out property <string> view_dak_letter; in-out property <string> view_dak_subject;
+    in-out property <string> view_dak_section; in-out property <string> dak_corr_date;
 
     callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback request_find_outward_dak(string); callback request_update_outward_dak(); callback request_submit_correspondence();
 
     spacing: 20px;
     HorizontalLayout {
         spacing: 12px;
-        SchemaAction { icon_text: "📥"; title: "Entry Outward Case"; active: root.active_schema_action == "pendak_entry"; clicked => { root.active_schema_action = "pendak_entry"; root.op_status_msg = ""; } }
-        SchemaAction { icon_text: "🔍"; title: "Find Outward Case"; active: root.active_schema_action == "pendak_find"; clicked => { root.active_schema_action = "pendak_find"; root.op_status_msg = ""; } }
-        SchemaAction { icon_text: "✏️"; title: "Edit/Update Outward"; active: root.active_schema_action == "pendak_edit"; clicked => { root.active_schema_action = "pendak_edit"; root.op_status_msg = ""; } }
-        SchemaAction { icon_text: "✉️"; title: "Outward Letter Link"; active: root.active_schema_action == "pendak_letter"; clicked => { root.active_schema_action = "pendak_letter"; root.op_status_msg = ""; } }
+        SchemaAction { icon_text: "📥"; title: "Entry Outward Case";
+            active: root.active_schema_action == "pendak_entry"; clicked => { root.active_schema_action = "pendak_entry"; root.op_status_msg = ""; } }
+        SchemaAction { icon_text: "🔍"; title: "Find Outward Case";
+            active: root.active_schema_action == "pendak_find"; clicked => { root.active_schema_action = "pendak_find"; root.op_status_msg = ""; } }
+        SchemaAction { icon_text: "✏️"; title: "Edit/Update Outward"; active: root.active_schema_action == "pendak_edit";
+            clicked => { root.active_schema_action = "pendak_edit"; root.op_status_msg = ""; } }
+        SchemaAction { icon_text: "✉️";
+            title: "Outward Letter Link"; active: root.active_schema_action == "pendak_letter"; clicked => { root.active_schema_action = "pendak_letter"; root.op_status_msg = ""; } }
     }
     Rectangle { height: 1px; background: Theme.border-color; opacity: 0.3; }
 
@@ -135,7 +141,8 @@ export component PenDakView inherits VerticalLayout {
                 }
                 Rectangle {
                     background: #00E5FF05; border-radius: 8px; border-width: 1px; border-color: #00E5FF1F;
-                    VerticalLayout { padding: 16px; spacing: 6px; Text { text: "RECORD SUBJECT MATTERS HEADING"; font-size: 10px; font-weight: 900; color: Theme.brand-warning; } Text { text: root.view_dak_subject; font-size: 14px; font-weight: 700; color: Theme.text-primary; wrap: word-wrap; } }
+                    VerticalLayout { padding: 16px; spacing: 6px;
+                        Text { text: "RECORD SUBJECT MATTERS HEADING"; font-size: 10px; font-weight: 900; color: Theme.brand-warning; } Text { text: root.view_dak_subject; font-size: 14px; font-weight: 700; color: Theme.text-primary; wrap: word-wrap; } }
                 }
             }
         }

@@ -2,13 +2,14 @@
 // Main entry point for the Slint UI
 
 import { Button, LineEdit, ScrollView } from "std-widgets.slint";
-import { Theme, SchemaAction } from "theme.slint";
+import { Theme, SchemaAction } from "theme.slint"; // <-- FIXED: Changed from "../theme.slint" to "theme.slint"
 import { RegisterView, RegisterFormFields } from "views/register.slint";
 
 // Bring in separate schema layouts cleanly
 import { GpfFinalPaymentView, GpfCaseDetails } from "views/gpf.slint";
 import { VlcsComputerizedView } from "views/vlcs.slint";
 import { PenDakView } from "views/pendak.slint";
+import { PensionView, PensionDetailsSlint, PensionStatusSlint } from "views/pension.slint";
 
 component NavItem inherits Rectangle {
     in property <string> text;
@@ -138,11 +139,19 @@ export component AppWindow inherits Window {
     in-out property <bool> dak_case_found: false; in-out property <string> view_dak_letter: "";
     in-out property <string> view_dak_subject: ""; in-out property <string> view_dak_section: ""; in-out property <string> dak_corr_date: "";
 
+    // Sai_Agartala State Memory
+    in-out property <string> sai_search_query: "";
+    in-out property <bool> sai_data_found: false;
+    in-out property <[PensionDetailsSlint]> sai_biographical_list: [];
+    in-out property <PensionStatusSlint> sai_status_record;
+
     callback request_authentication(string, string);
     callback request_registration(string, string, string, string, string, string, string); callback approve_pending_operator(string, string); callback deny_pending_operator(string); callback request_logout(); callback load_users_list(); callback request_profile_pic_update();
     callback extend_user_lease(string, string, string, string); callback ban_user(string); callback request_find_gpf_case(string); callback request_delete_full_case(string, string, string); callback request_delete_application(string); callback request_delete_precalc(string); callback request_update_gpf_status(string, string);
     callback request_vlcs_get_ddo(string); callback request_vlcs_update_ddo(string); callback request_vlcs_get_emp(string); callback request_vlcs_update_emp(string, string);
     callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback request_find_outward_dak(string); callback request_update_outward_dak(); callback request_submit_correspondence();
+    callback request_pension_details(string); callback request_pension_status(string);
+
     HorizontalLayout {
         padding: 0px; spacing: 0px;
         if (root.is_logged_in) : Rectangle {
@@ -309,7 +318,7 @@ export component AppWindow inherits Window {
                                     HorizontalLayout {
                                         spacing: 12px;
                                         SchemaCard { icon_text: "🛡"; title: "sai_agartala: P-SAI Core Pension"; has_access: root.schema_access.sai_agartala; active: false; clicked => { root.op_target_schema = "sai_agartala";
-                                            root.active_schema_action = "none"; } }
+                                            root.active_schema_action = "sai_biographical"; } }
                                         SchemaCard { icon_text: "📮";
                                             title: "pendak: Pension DAK System"; has_access: root.schema_access.pendak; active: false; clicked => { root.op_target_schema = "pendak"; root.active_schema_action = "pendak_entry"; } }
                                     }
@@ -356,6 +365,14 @@ export component AppWindow inherits Window {
                                 request_find_outward_dak(s) => { root.request_find_outward_dak(s); }
                                 request_update_outward_dak() => { root.request_update_outward_dak(); }
                                 request_submit_correspondence() => { root.request_submit_correspondence(); }
+                            }
+
+                            if (root.op_target_schema == "sai_agartala" && root.schema_access.sai_agartala) : PensionView {
+                                active_schema_action <=> root.active_schema_action; op_status_msg <=> root.op_status_msg; op_is_error <=> root.op_is_error;
+                                search_query <=> root.sai_search_query; data_found <=> root.sai_data_found;
+                                biographical_list <=> root.sai_biographical_list; status_record <=> root.sai_status_record;
+                                request_pension_details(s) => { root.request_pension_details(s); }
+                                request_pension_status(s) => { root.request_pension_status(s); }
                             }
 
                             if (root.op_status_msg != "") : Rectangle {

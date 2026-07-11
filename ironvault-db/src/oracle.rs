@@ -8,6 +8,7 @@ pub use crate::gpf::GpfCaseRecord;
 pub use crate::pendak::{
     DakRecipientDetail, FullPensionDakRecord, PensionAuthDetails, PensionDakEntry,
 };
+pub use crate::sai_agartala::{PensionDetailsRecord, PensionStatusRecord}; // <-- ADDED HERE
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum OracleTarget {
