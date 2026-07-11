@@ -52,18 +52,23 @@ impl DbClient {
     pub async fn authenticate_user(
         &self,
         username: &str,
-        _pass: &str,
+        password_token: &str,
         hwid: &str,
     ) -> Result<DbUser, String> {
+        // SECURED: Hash incoming user login verification credential natively before database comparison mapping
+        let secure_hashed_pass = ironvault_core::crypto::hash_password(password_token, username);
+
+        // FIXED: Column target re-mapped back from secret_token to your native schema keyword 'password'
         let row = sqlx::query(
             "SELECT username, role, COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login \
              FROM ironvault.users \
-             WHERE username = $1 AND status = 'ACTIVE' AND hardware_fingerprint = $2 \
+             WHERE username = $1 AND password = $2 AND status = 'ACTIVE' AND hardware_fingerprint = $3 \
              AND (role = 'SuperAdmin' OR role = 'super_admin' OR role = 'Super Admin' OR expires_at IS NULL OR expires_at > NOW())"
         )
         .bind(username)
+        .bind(&secure_hashed_pass)
         .bind(hwid)
-        .fetch_optional(&self.pool)
+        .fetch_optional(self.get_pool())
         .await
         .map_err(|e| e.to_string())?;
 
@@ -86,7 +91,7 @@ impl DbClient {
     pub async fn register_user(
         &self,
         username: &str,
-        hashed_pass: &str,
+        secure_hashed_pass: &str,
         hwid: &str,
         first: &str,
         middle: &str,
@@ -99,12 +104,14 @@ impl DbClient {
         } else {
             format!("{} {} {}", first.trim(), middle.trim(), last.trim())
         };
+
+        // FIXED: Column target re-mapped back from secret_token to your native schema keyword 'password'
         sqlx::query(
             "INSERT INTO ironvault.users (username, password, role, status, hardware_fingerprint, first_name, middle_name, last_name, full_name, designation, section, expires_at) \
              VALUES ($1, $2, 'Operator', 'PENDING', $3, $4, $5, $6, $7, $8, $9, NOW() + '30 days'::INTERVAL) ON CONFLICT DO NOTHING"
         )
         .bind(username)
-        .bind(hashed_pass)
+        .bind(secure_hashed_pass)
         .bind(hwid)
         .bind(first)
         .bind(middle)

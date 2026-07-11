@@ -1,8 +1,5 @@
 //! Cryptographic operations for payload encryption and decryption
 //!
-//! Uses AES-256-GCM for authenticated encryption
-
-//! Cryptographic operations for payload encryption and decryption
 //! Uses AES-256-GCM for authenticated encryption and introduces Time-Bound Envelopes
 
 use aes_gcm::{
@@ -46,10 +43,19 @@ pub fn derive_key(password: &str, salt: &str) -> [u8; 32] {
     hasher.update(password.as_bytes());
     hasher.update(salt.as_bytes());
     let result = hasher.finalize();
-    
+
     let mut key = [0u8; 32];
     key.copy_from_slice(&result);
     key
+}
+
+/// Hashes an operator password with a username-based salt to prevent plaintext database leaks
+pub fn hash_password(password: &str, username: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    hasher.update(username.as_bytes());
+    let result = hasher.finalize();
+    format!("{:x}", result)
 }
 
 impl Encryptor {
@@ -61,22 +67,26 @@ impl Encryptor {
     }
 
     /// Base layer: Encrypt raw plaintext with optional additional authenticated data (AAD)
-    pub fn encrypt(&self, plaintext: &[u8], aad: Option<&[u8]>) -> Result<EncryptedPayload, CryptoError> {
+    pub fn encrypt(
+        &self,
+        plaintext: &[u8],
+        aad: Option<&[u8]>,
+    ) -> Result<EncryptedPayload, CryptoError> {
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
         let nonce = Nonce::from_slice(&nonce_bytes);
-        
+
         let cipher = Aes256Gcm::new(&self.key);
-        
+
         let payload = Payload {
             msg: plaintext,
             aad: aad.unwrap_or(b""),
         };
-        
+
         let ciphertext = cipher
             .encrypt(nonce, payload)
             .map_err(|_| CryptoError::EncryptionFailed)?;
-            
+
         Ok(EncryptedPayload {
             nonce: nonce_bytes.to_vec(),
             ciphertext,
@@ -96,8 +106,9 @@ impl Encryptor {
             expires_in_secs,
         };
 
-        let serialized = serde_json::to_string(&envelope).map_err(|_| CryptoError::SerializationFailed)?;
-        
+        let serialized =
+            serde_json::to_string(&envelope).map_err(|_| CryptoError::SerializationFailed)?;
+
         // We use the application namespace as baseline Authenticated Data
         self.encrypt(serialized.as_bytes(), Some(b"IRONVAULT_SECURE_PAYLOAD"))
     }
@@ -132,7 +143,7 @@ impl Decryptor {
         payload: &EncryptedPayload,
     ) -> Result<T, CryptoError> {
         let decrypted_bytes = self.decrypt(payload)?;
-        
+
         let envelope: SecureEnvelope<T> = serde_json::from_slice(&decrypted_bytes)
             .map_err(|_| CryptoError::SerializationFailed)?;
 

@@ -49,9 +49,10 @@ async fn main() -> Result<(), slint::PlatformError> {
         let audit = Arc::clone(&audit_login_clone);
         let target_hwid = current_hwid_login.clone();
         let u_name = username.to_string();
+        let plain_password = password.to_string();
         
         tokio::spawn(async move {
-            match db.authenticate_user(&u_name, &password, &target_hwid).await {
+            match db.authenticate_user(&u_name, &plain_password, &target_hwid).await {
                 Ok(user) => {
                     let pool = db.get_pool().clone();
                     let profile_query = sqlx::query("SELECT full_name, designation, expires_at, section FROM ironvault.users WHERE username = $1")
@@ -122,6 +123,41 @@ async fn main() -> Result<(), slint::PlatformError> {
                     audit.log_action(&core_user, "OPERATOR_DB_LOGIN_SUCCESS", "CRITICAL").ok();
                 }
                 Err(err) => slint::invoke_from_event_loop(move || { ui_weak.unwrap().set_login_error(err.into()); }).unwrap(),
+            }
+        });
+    });
+
+    // --- SECURE SYSTEM OPERATOR ENROLLMENT CHANNELS HOOK ---
+    let app_weak_reg = app.as_weak();
+    let db_reg_clone = Arc::clone(&db);
+    let current_hwid_reg = hwid.clone();
+    app.on_request_registration(move |username, secret, first, middle, last, desg, sect| {
+        let ui_weak = app_weak_reg.clone();
+        let db = Arc::clone(&db_reg_clone);
+        let hwid = current_hwid_reg.clone();
+        let u_name = username.to_string();
+        let f_name = first.to_string();
+        let m_name = middle.to_string();
+        let l_name = last.to_string();
+        let d_name = desg.to_string();
+        let s_name = sect.to_string();
+        
+        // SECURED: Pass word token undergoes cryptographic salting hashing routine before transmission
+        let secure_hashed_password = ironvault_core::crypto::hash_password(&secret.to_string(), &u_name);
+
+        tokio::spawn(async move {
+            match db.register_user(&u_name, &secure_hashed_password, &hwid, &f_name, &m_name, &l_name, &d_name, &s_name).await {
+                Ok(_) => slint::invoke_from_event_loop(move || {
+                    let ui = ui_weak.unwrap();
+                    ui.set_login_error("".into());
+                    ui.set_auth_screen_state("login".into());
+                    ui.set_op_is_error(false);
+                    ui.set_op_status_msg("Enrollment request transmitted successfully. Awaiting SuperAdmin verification token sign.".into());
+                }).unwrap(),
+                Err(e) => slint::invoke_from_event_loop(move || {
+                    let ui = ui_weak.unwrap();
+                    ui.set_login_error(format!("Enrollment Fault: {}", e).into());
+                }).unwrap(),
             }
         });
     });
@@ -272,7 +308,7 @@ async fn main() -> Result<(), slint::PlatformError> {
     // Sub-stubs
     app.on_request_update_gpf_status(|_, _| {}); app.on_request_vlcs_get_ddo(|_| {}); app.on_request_vlcs_update_ddo(|_| {}); app.on_request_vlcs_get_emp(|_| {}); app.on_request_vlcs_update_emp(|_, _| {});
 
-    // --- PENDAK DYNAMIC CASE LIVE AUTO-LOOKUP HOOK CONTEXT ---
+    // --- LIVE AUTO-LOOKUP HOOK CONTEXT ---
     let app_weak_dak_find = app.as_weak();
     let oracle_dak_find = Arc::clone(&oracle_client);
     app.on_request_find_pension_dak_meta(move |search_app_num| {
@@ -411,7 +447,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // ACTION 5: Outward Letters Binding Link Option (FIXED: references crate path correctly instead of oracle_client)
+    // ACTION 5: Outward Letters Binding Link Option
     let app_weak_dak_letter = app.as_weak();
     let oracle_dak_letter = Arc::clone(&oracle_client);
     app.on_request_submit_correspondence(move || {
@@ -427,7 +463,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         let letter_payload = ironvault_db::oracle::PensionDakEntry {
             app_num: app_num.clone(), letter_no: letter_no.clone(), ppo_fppo: ui.get_dak_ppo().to_string(), gpo: ui.get_dak_gpo().to_string(), cpo: ui.get_dak_cpo().to_string(),
             section: section.clone(), subject: subject.clone(), copies_count,
-            recipients: vec![ironvault_db::oracle::DakRecipientDetail { // <-- FIXED TYPO LOGIC HERE
+            recipients: vec![ironvault_db::oracle::DakRecipientDetail {
                 addressee: ui.get_dak_adr_1().to_string(), barcode: ui.get_dak_bar_1().to_string(), sent_by: ui.get_dak_sent_1().to_string(), service_book: "N".to_string()
             }],
         };
@@ -442,6 +478,58 @@ async fn main() -> Result<(), slint::PlatformError> {
                     }).unwrap();
                 }
                 Err(e) => { slint::invoke_from_event_loop(move || { let ui_handle = ui_weak.unwrap(); ui_handle.set_op_is_error(true); ui_handle.set_op_status_msg(format!("ORACLE LETTER FAULT: {}", e).into()); }).unwrap(); }
+            }
+        });
+    });
+
+    // =========================================================================
+    // --- SAI_AGARTALA / PENSION COMPONENT CHANNELS ---
+    // =========================================================================
+    let app_weak_pnsr_det = app.as_weak();
+    let oracle_pnsr_det = Arc::clone(&oracle_client);
+    app.on_request_pension_details(move |query_term| {
+        let ui_weak = app_weak_pnsr_det.clone(); let oracle = Arc::clone(&oracle_pnsr_det);
+        let term = query_term.to_string();
+        tokio::spawn(async move {
+            match oracle.pnsr_get_details(&term).await {
+                Ok(records) => {
+                    let slint_records: Vec<PensionDetailsSlint> = records.into_iter().map(|r| {
+                        PensionDetailsSlint {
+                            application_no: r.application_no.into(), pensioner_name: r.pensioner_name.into(), employee_code: r.employee_code.to_string().into(),
+                            designation: r.designation.into(), mobile_no: r.mobile_no.into(), date_of_birth: r.date_of_birth.into(),
+                        }
+                    }).collect();
+                    slint::invoke_from_event_loop(move || {
+                        let ui = ui_weak.unwrap(); ui.set_sai_data_found(!slint_records.is_empty());
+                        ui.set_sai_biographical_list(slint::ModelRc::from(std::rc::Rc::new(slint::VecModel::from(slint_records))));
+                        ui.set_op_is_error(false);
+                    }).unwrap();
+                }
+                Err(e) => { slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("Lookup failure: {}", e).into()); }).unwrap(); }
+            }
+        });
+    });
+
+    let app_weak_pnsr_stat = app.as_weak();
+    let oracle_pnsr_stat = Arc::clone(&oracle_client);
+    app.on_request_pension_status(move |app_no| {
+        let ui_weak = app_weak_pnsr_stat.clone(); let oracle = Arc::clone(&oracle_pnsr_stat);
+        let query_app = app_no.to_string();
+        tokio::spawn(async move {
+            match oracle.pnsr_get_status_tracking(&query_app).await {
+                Ok(Some(record)) => {
+                    let slint_record = PensionStatusSlint {
+                        application_no: record.application_no.into(), application_date: record.application_date.into(), name: record.name.into(),
+                        last_work_office_name: record.last_work_office_name.into(), status: record.status.into(), date_of_settle: record.date_of_settle.into(),
+                        ppo: record.ppo.into(), gpo: record.gpo.into(), cpo: record.cpo.into(), dak_outward_date: record.dak_outward_date.into(),
+                        speed_post: record.speed_post.into(), treasury: record.treasury.into(),
+                    };
+                    slint::invoke_from_event_loop(move || {
+                        let ui = ui_weak.unwrap(); ui.set_sai_data_found(true); ui.set_op_is_error(false); ui.set_sai_status_record(slint_record);
+                    }).unwrap();
+                }
+                Ok(None) => { slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_sai_data_found(false); ui.set_op_is_error(true); ui.set_op_status_msg("No settlement matches located for criteria token.".into()); }).unwrap(); }
+                Err(e) => { slint::invoke_from_event_loop(move || { let ui = ui_weak.unwrap(); ui.set_op_is_error(true); ui.set_op_status_msg(format!("Tracking Engine Error: {}", e).into()); }).unwrap(); }
             }
         });
     });
