@@ -14,17 +14,23 @@ fn main() {
         ("log-out", "log-out.svg"),
     ];
 
-    let assets_dir = Path::new("ui/assets");
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let base_path = Path::new(&manifest_dir);
+    let assets_dir = base_path.join("ui/assets");
+
     if !assets_dir.exists() {
-        create_dir_all(assets_dir).unwrap();
+        create_dir_all(&assets_dir).unwrap();
     }
 
     // Verify presence or handle background download execution loop
     for (icon_name, filename) in required_icons {
         let dest_path = assets_dir.join(filename);
-        
+
         if !dest_path.exists() {
-            println!("cargo:warning=[LUCIDE PIPELINE] Downloading vector mapping: {}", filename);
+            println!(
+                "cargo:warning=[LUCIDE PIPELINE] Downloading vector mapping: {}",
+                filename
+            );
             let target_url = format!(
                 "https://raw.githubusercontent.com/lucide-icons/lucide/main/icons/{}.svg",
                 icon_name
@@ -37,12 +43,19 @@ fn main() {
                         file.write_all(svg_content.as_bytes()).unwrap();
                     }
                 } else {
-                    panic!("[FATAL SYNC REJECTION] Icon download failure from remote repository: {}", icon_name);
+                    panic!(
+                        "[FATAL SYNC REJECTION] Icon download failure from remote repository: {}",
+                        icon_name
+                    );
                 }
             }
         }
     }
 
-    // Pass task execution to Slint compiler step
-    slint_build::compile("ui/main.slint").unwrap();
+    // FIXED: Build absolute base include paths to make views globally discoverable
+    let ui_dir = base_path.join("ui");
+    let config = slint_build::CompilerConfiguration::new().with_include_paths(vec![ui_dir]);
+
+    let main_slint_path = base_path.join("ui/main.slint");
+    slint_build::compile_with_config(main_slint_path.to_str().unwrap(), config).unwrap();
 }
