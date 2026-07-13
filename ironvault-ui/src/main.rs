@@ -194,13 +194,24 @@ async fn main() -> Result<(), slint::PlatformError> {
         let db = Arc::clone(&db_lease_clone);
         let user_str = target_user.to_string();
         let role_str = new_role.to_string();
-        let schema_str = new_schemas.to_string();
+        let schema_str = new_schemas.to_string().to_lowercase();
         let days_valid: i32 = days_string.to_string().parse().unwrap_or(30);
+        
         tokio::spawn(async move {
+            // Persist the clearance group tier updates and the calendar validation lease intervals
             if db.update_user_lease(&user_str, &role_str, days_valid).await.is_ok() {
                 let pool = db.get_pool().clone();
-                let _ = sqlx::query("UPDATE ironvault.users SET section = $1 WHERE username = $2").bind(&schema_str).bind(&user_str).execute(&pool).await;
-                slint::invoke_from_event_loop(move || ui_weak.unwrap().invoke_load_users_list()).unwrap();
+                // Re-route path configurations
+                let _ = sqlx::query("UPDATE ironvault.users SET section = $1 WHERE username = $2")
+                    .bind(&schema_str)
+                    .bind(&user_str)
+                    .execute(&pool)
+                    .await;
+                
+                // Force an event loop refresh pass
+                slint::invoke_from_event_loop(move || {
+                    ui_weak.unwrap().invoke_load_users_list();
+                }).unwrap();
             }
         });
     });
