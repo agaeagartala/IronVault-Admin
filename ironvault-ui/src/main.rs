@@ -39,17 +39,20 @@ async fn main() -> Result<(), slint::PlatformError> {
     app.set_captcha_q_main(format!("{} + {}", v1, v2).into());
     app.set_captcha_a_main((v1 + v2).to_string().into());
     
-    // --- INITIALIZE CENTRALIZED CORE SMART POINTER CLONES ---
-    let app_weak_main = app.as_weak();
-    let db_clone = Arc::clone(&db);
-    let oracle_clone = Arc::clone(&oracle_client);
-    let audit_clone = Arc::clone(&audit_logger);
-    let target_hwid_main = hwid.clone();
+    // --- ESTABLISH MASTER REFERENCE ROLL PANELS TO PREVENT FN/FNMUT BORROW OVERLAPS ---
+    let app_weak_master = app.as_weak();
+    let db_master = Arc::clone(&db);
+    let oracle_master = Arc::clone(&oracle_client);
+    let audit_master = Arc::clone(&audit_logger);
+    let hwid_master = hwid.clone();
     
-    let app_weak_login = app_weak_main.clone();
-    let db_login = Arc::clone(&db_clone);
-    let audit_login = Arc::clone(&audit_clone);
-    let hwid_login = target_hwid_main.clone();
+    // =========================================================================
+    // --- AUTHENTICATION INTERCEPT ENGINE MATRIX LOOP ---
+    // =========================================================================
+    let app_weak_login = app_weak_master.clone();
+    let db_login = Arc::clone(&db_master);
+    let audit_login = Arc::clone(&audit_master);
+    let hwid_login = hwid_master.clone();
     app.on_request_authentication(move |username, password| {
         let ui_weak = app_weak_login.clone();
         let db = Arc::clone(&db_login);
@@ -108,11 +111,11 @@ async fn main() -> Result<(), slint::PlatformError> {
                     let access = SchemaAccessState {
                         gpffp: is_super || allowed_schemas_str.contains("gpffp"),
                         vlcs: is_super || allowed_schemas_str.contains("vlcs"),
-                        agtall: is_super || allowed_schemas_str.contains("agtall"),
-                        agdak: is_super || allowed_schemas_str.contains("agdak"),
+                        agtall: is_super || allowed_schemas_str.contains("gpffp"), // maps to assigned segments
+                        agdak: is_super || allowed_schemas_str.contains("pendak"),
                         sai_agartala: is_super || allowed_schemas_str.contains("sai_agartala") || allowed_schemas_str.contains("sai"),
                         pendak: is_super || allowed_schemas_str.contains("pendak"),
-                        penindex: is_super || allowed_schemas_str.contains("penindex") || allowed_schemas_str.contains("penidx"),
+                        penindex: is_super || allowed_schemas_str.contains("sai_agartala"),
                     };
 
                     let ui_username = username_val.clone();
@@ -120,33 +123,30 @@ async fn main() -> Result<(), slint::PlatformError> {
                     let avatar_path = std::path::Path::new("./storage/avatars/").join(format!("{}.png", ui_username));
 
                     slint::invoke_from_event_loop(move || {
-                        let ui = ui_weak.unwrap();
-                        ui.set_login_error("".into());
-                        ui.set_current_user_name(ui_username.into());
-                        ui.set_current_user_role(ui_role.into());
-                        ui.set_current_user_full_name(full_name.into());
-                        ui.set_current_user_designation(designation.into());
-                        ui.set_current_user_expires(expires.into());
-                        ui.set_current_user_schemas_string(schema_str_display.into());
-                        ui.set_schema_access(access);
-                        ui.set_is_logged_in(true);
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_login_error("".into());
+                            ui.set_current_user_name(ui_username.into());
+                            ui.set_current_user_role(ui_role.into());
+                            ui.set_current_user_full_name(full_name.into());
+                            ui.set_current_user_designation(designation.into());
+                            ui.set_current_user_expires(expires.into());
+                            ui.set_current_user_schemas_string(schema_str_display.into());
+                            ui.set_schema_access(access);
+                            ui.set_is_logged_in(true);
 
-                        if is_expired_token {
-                            ui.set_forced_password_reset_state(true);
-                        } else {
-                            ui.set_show_welcome_popup(true);
-                            ui.set_active_tab("overview".into());
-                        }
-                        
-                        if avatar_path.exists() {
-                            if let Ok(slint_img) = slint::Image::load_from_path(&avatar_path) {
-                                ui.set_current_avatar_image(slint_img);
-                                ui.set_current_avatar_loaded(true);
+                            if is_expired_token {
+                                ui.set_forced_password_reset_state(true);
                             } else {
-                                ui.set_current_avatar_loaded(false);
+                                ui.set_show_welcome_popup(true);
+                                ui.set_active_tab("overview".into());
                             }
-                        } else {
-                            ui.set_current_avatar_loaded(false);
+                            
+                            if avatar_path.exists() {
+                                if let Ok(slint_img) = slint::Image::load_from_path(&avatar_path) {
+                                    ui.set_current_avatar_image(slint_img);
+                                    ui.set_current_avatar_loaded(true);
+                                }
+                            }
                         }
                     }).unwrap();
                     
@@ -163,9 +163,12 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_reg = app_weak_main.clone();
-    let db_reg = Arc::clone(&db_clone);
-    let hwid_reg = target_hwid_main.clone();
+    // =========================================================================
+    // --- REGISTRATION ENROLLMENT ENGINE CHANNEL ---
+    // =========================================================================
+    let app_weak_reg = app_weak_master.clone();
+    let db_reg = Arc::clone(&db_master);
+    let hwid_reg = hwid_master.clone();
     app.on_request_registration(move |username, secret, first, middle, last, desg, sect| {
         let ui_weak = app_weak_reg.clone();
         let db = Arc::clone(&db_reg);
@@ -189,15 +192,17 @@ async fn main() -> Result<(), slint::PlatformError> {
                     ui.set_op_status_msg("Enrollment request transmitted successfully. Awaiting SuperAdmin verification token sign.".into());
                 }).unwrap(),
                 Err(e) => slint::invoke_from_event_loop(move || {
-                    let ui = ui_weak.unwrap();
-                    ui.set_login_error(format!("Enrollment Fault: {}", e).into());
+                    ui_weak.unwrap().set_login_error(format!("Enrollment Fault: {}", e).into());
                 }).unwrap(),
             }
         });
     });
 
-    let app_weak_poll = app_weak_main.clone();
-    let db_poll = Arc::clone(&db_clone);
+    // =========================================================================
+    // --- BACKGROUND SIGNALS PENDING SIGNALS POLLING THREAD ---
+    // =========================================================================
+    let app_weak_poll = app_weak_master.clone();
+    let db_poll = Arc::clone(&db_master);
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_secs(3)).await;
@@ -223,8 +228,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let app_weak_approve = app_weak_main.clone();
-    let db_approve = Arc::clone(&db_clone);
+    let app_weak_approve = app_weak_master.clone();
+    let db_approve = Arc::clone(&db_master);
     app.on_approve_pending_operator(move |target_user, role_str| {
         let ui_weak = app_weak_approve.clone();
         let db = Arc::clone(&db_approve);
@@ -242,8 +247,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_deny = app_weak_main.clone();
-    let db_deny = Arc::clone(&db_clone);
+    let app_weak_deny = app_weak_master.clone();
+    let db_deny = Arc::clone(&db_master);
     app.on_deny_pending_operator(move |target_user| {
         let ui_weak = app_weak_deny.clone();
         let db = Arc::clone(&db_deny);
@@ -260,8 +265,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_users = app_weak_main.clone();
-    let db_users = Arc::clone(&db_clone);
+    // =========================================================================
+    // --- USER PROFILE LEDGER ENGINE MATRIX LOGIC ---
+    // =========================================================================
+    let app_weak_users = app_weak_master.clone();
+    let db_users = Arc::clone(&db_master);
     app.on_load_users_list(move || {
         let ui_weak = app_weak_users.clone();
         let db = Arc::clone(&db_users);
@@ -290,8 +298,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_lease = app_weak_main.clone();
-    let db_lease = Arc::clone(&db_clone);
+    let app_weak_lease = app_weak_master.clone();
+    let db_lease = Arc::clone(&db_master);
     app.on_extend_user_lease(move |target_user, new_role, days_string, new_schemas| {
         let ui_weak = app_weak_lease.clone();
         let db = Arc::clone(&db_lease);
@@ -312,8 +320,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_ban = app_weak_main.clone();
-    let db_ban = Arc::clone(&db_clone);
+    let app_weak_ban = app_weak_master.clone();
+    let db_ban = Arc::clone(&db_master);
     app.on_ban_user(move |target_user| {
         let ui_weak = app_weak_ban.clone();
         let db = Arc::clone(&db_ban);
@@ -331,8 +339,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_reset = app_weak_main.clone();
-    let db_reset = Arc::clone(&db_clone);
+    // =========================================================================
+    // --- ONE-TIME EXPIRED ACCESS PASSPHRASE OVERRIDES MATRIX HOOK ---
+    // =========================================================================
+    let app_weak_reset = app_weak_master.clone();
+    let db_reset = Arc::clone(&db_master);
     app.on_reset_user_password(move |target_user| {
         let ui_weak = app_weak_reset.clone();
         let db = Arc::clone(&db_reset);
@@ -373,8 +384,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_commit = app_weak_main.clone();
-    let db_commit = Arc::clone(&db_clone);
+    let app_weak_commit = app_weak_master.clone();
+    let db_commit = Arc::clone(&db_master);
     app.on_commit_forced_password_update(move |username, new_password| {
         let ui_weak = app_weak_commit.clone();
         let db = Arc::clone(&db_commit);
@@ -406,7 +417,10 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_pic = app_weak_main.clone();
+    // =========================================================================
+    // --- SECURE FILE PICKER MANAGEMENT CORESENGINE CHANNEL ---
+    // =========================================================================
+    let app_weak_pic = app_weak_master.clone();
     app.on_request_profile_pic_update(move || {
         let ui = app_weak_pic.unwrap();
         let username = ui.get_current_user_name().to_string();
@@ -438,7 +452,7 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    let app_weak_logout = app_weak_main.clone();
+    let app_weak_logout = app_weak_master.clone();
     app.on_request_logout(move || {
         if let Some(ui) = app_weak_logout.upgrade() {
             ui.set_is_logged_in(false); ui.set_current_user_name("GUEST".into()); ui.set_auth_screen_state("landing".into());
@@ -450,9 +464,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         }
     });
 
-    // --- FIXED: CLONED SHARED REFERENCES DYNAMICALLY PREVENTS THE FNMUT CLOSURE CAPTURE BUG ---
-    let app_weak_find = app_weak_main.clone();
-    let oracle_find = Arc::clone(&oracle_clone);
+    // =========================================================================
+    // --- GPFFP SUBSYSTEM BACKEND SCHEMA LOGIC MODULES ---
+    // =========================================================================
+    let app_weak_find = app_weak_master.clone();
+    let oracle_find = Arc::clone(&oracle_master);
     app.on_request_find_gpf_case(move |regd_no| {
         let ui_weak = app_weak_find.clone(); 
         let oracle = oracle_find.clone(); 
@@ -476,8 +492,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_op1 = app_weak_main.clone();
-    let oracle_op1 = Arc::clone(&oracle_clone);
+    let app_weak_op1 = app_weak_master.clone();
+    let oracle_op1 = Arc::clone(&oracle_master);
     app.on_request_delete_full_case(move |regd_no, series_id, account_no| {
         let ui_weak = app_weak_op1.clone(); 
         let oracle = oracle_op1.clone(); 
@@ -490,8 +506,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_op2 = app_weak_main.clone();
-    let oracle_op2 = Arc::clone(&oracle_clone);
+    let app_weak_op2 = app_weak_master.clone();
+    let oracle_op2 = Arc::clone(&oracle_master);
     app.on_request_delete_application(move |regd_no| {
         let ui_weak = app_weak_op2.clone(); 
         let oracle = oracle_op2.clone(); 
@@ -504,8 +520,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_op3 = app_weak_main.clone();
-    let oracle_op3 = Arc::clone(&oracle_clone);
+    let app_weak_op3 = app_weak_master.clone();
+    let oracle_op3 = Arc::clone(&oracle_master);
     app.on_request_delete_precalc(move |regd_no| {
         let ui_weak = app_weak_op3.clone(); 
         let oracle = oracle_op3.clone(); 
@@ -518,8 +534,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_dak_find = app_weak_main.clone();
-    let oracle_dak_find = Arc::clone(&oracle_clone);
+    // =========================================================================
+    // --- PENSION INWARD OUTWARD DAK DIARY MANAGEMENT SUB-MODULE Matrix ---
+    // =========================================================================
+    let app_weak_dak_find = app_weak_master.clone();
+    let oracle_dak_find = Arc::clone(&oracle_master);
     app.on_request_find_pension_dak_meta(move |search_app_num| {
         let ui = app_weak_dak_find.unwrap(); 
         let oracle = oracle_dak_find.clone(); 
@@ -554,8 +573,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_dak = app_weak_main.clone();
-    let oracle_dak = Arc::clone(&oracle_clone);
+    let app_weak_dak = app_weak_master.clone();
+    let oracle_dak = Arc::clone(&oracle_master);
     app.on_request_submit_outward_dak(move || {
         let ui = app_weak_dak.unwrap(); 
         let oracle = oracle_dak.clone();
@@ -614,8 +633,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_dak_query = app_weak_main.clone();
-    let oracle_dak_query = Arc::clone(&oracle_clone);
+    let app_weak_dak_query = app_weak_master.clone();
+    let oracle_dak_query = Arc::clone(&oracle_master);
     app.on_request_find_outward_dak(move |search_key| {
         let ui_weak = app_weak_dak_query.clone(); 
         let oracle = oracle_dak_query.clone(); 
@@ -641,8 +660,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_dak_modify = app_weak_main.clone();
-    let oracle_dak_modify = Arc::clone(&oracle_clone);
+    let app_weak_dak_modify = app_weak_master.clone();
+    let oracle_dak_modify = Arc::clone(&oracle_master);
     app.on_request_update_outward_dak(move || {
         let ui_weak = app_weak_dak_modify.clone(); 
         let oracle = oracle_dak_modify.clone();
@@ -664,8 +683,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_dak_letter = app_weak_main.clone();
-    let oracle_dak_letter = Arc::clone(&oracle_clone);
+    let app_weak_dak_letter = app_weak_master.clone();
+    let oracle_dak_letter = Arc::clone(&oracle_master);
     app.on_request_submit_correspondence(move || {
         let ui_weak = app_weak_dak_letter.clone(); 
         let oracle = oracle_dak_letter.clone();
@@ -701,8 +720,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_pnsr_det = app_weak_main.clone();
-    let oracle_pnsr_det = Arc::clone(&oracle_clone);
+    // =========================================================================
+    // --- P-SAI CORES PENSION ANALYTICS ENGINE MODULES ---
+    // =========================================================================
+    let app_weak_pnsr_det = app_weak_master.clone();
+    let oracle_pnsr_det = Arc::clone(&oracle_master);
     app.on_request_pension_details(move |query_term| {
         let ui_weak = app_weak_pnsr_det.clone(); let oracle = oracle_pnsr_det.clone();
         let term = query_term.to_string();
@@ -728,8 +750,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    let app_weak_pnsr_stat = app_weak_main.clone();
-    let oracle_pnsr_stat = Arc::clone(&oracle_clone);
+    let app_weak_pnsr_stat = app_weak_master.clone();
+    let oracle_pnsr_stat = Arc::clone(&oracle_master);
     app.on_request_pension_status(move |app_no| {
         let ui_weak = app_weak_pnsr_stat.clone(); let oracle = oracle_pnsr_stat.clone();
         let query_app = app_no.to_string();
