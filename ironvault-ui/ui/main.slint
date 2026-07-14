@@ -1,4 +1,4 @@
-// Master window with sidebar + content router and Forced Password Reset Matrix Layer
+// Master window with sidebar + content router and Advanced Security Access Matrix Control Layer
 import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme, SchemaAction } from "theme.slint";
 import { RegisterView, RegisterFormFields } from "views/register.slint";
@@ -65,20 +65,72 @@ component Avatar inherits Rectangle {
     av_ta := TouchArea { clicked => { root.clicked(); } }
 }
 
-component SchemaCard inherits Rectangle {
-    in property <string> icon_text; in property <string> title;
-    in property <bool> has_access; in property <bool> active; callback clicked();
-    height: 74px; horizontal-stretch: 1; border-radius: 12px; background: !root.has_access ? Theme.bg-sidebar : (root.active ? #00E5FF2A : (ta.has-hover ? Theme.bg-card-hover : Theme.bg-card)); border-width: 1px; border-color: !root.has_access ? Theme.border-dark : (root.active ? Theme.brand-primary : Theme.border-color); opacity: root.has_access ? 1.0 : 0.4;
+component PremiumSchemaCard inherits Rectangle {
+    in property <string> icon_text; 
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> node_ip;
+    in property <bool> has_access; 
+    in property <bool> active; 
+    callback clicked();
     
-    animate background { duration: 150ms; } animate border-color { duration: 150ms; }
+    height: 120px; horizontal-stretch: 1; border-radius: 16px; 
+    background: !root.has_access ? #1E293B4D : (root.active ? #00E5FF1F : (ta.has-hover ? #1E293BCC : #111827CC)); 
+    border-width: 1.5px; 
+    border-color: !root.has_access ? #334155 : (root.active ? Theme.brand-primary : (ta.has-hover ? #00E5FF66 : #1F2937)); 
+    opacity: root.has_access ? 1.0 : 0.5;
+    drop-shadow-blur: ta.has-hover ? 20px : 0px;
+    drop-shadow-color: #00E5FF14;
+    
+    animate background { duration: 200ms; } animate border-color { duration: 200ms; }
 
     HorizontalLayout {
-        padding: 16px; spacing: 16px; alignment: start;
-        VerticalLayout { alignment: center; Rectangle { width: 44px; height: 44px; border-radius: 8px; background: root.has_access ? Theme.brand-primary : Theme.border-dark; Text { text: root.icon_text; color: root.has_access ? Theme.bg-main : Theme.text-muted; font-size: 20px; font-weight: 900; horizontal-alignment: center; vertical-alignment: center; } } }
-        VerticalLayout { alignment: center; spacing: 4px;
-            Text { text: root.title; font-size: 14px; font-weight: 800; color: root.has_access ? Theme.text-primary : Theme.text-muted; } Text { text: !root.has_access ? "ACCESS RESTRICTED" : (root.active ? "SECURE MATRIX ACTIVE" : "SYSTEM READY"); font-size: 10px; font-weight: 800; color: !root.has_access ? Theme.brand-danger : (root.active ? Theme.brand-primary : Theme.brand-success); } }
+        padding: 24px; spacing: 20px;
+        VerticalLayout { 
+            alignment: center; 
+            Rectangle { 
+                width: 56px; height: 56px; border-radius: 12px; 
+                background: !root.has_access ? #334155 : (root.active ? Theme.brand-primary : #00E5FF1A); 
+                Text { text: root.icon_text; color: root.has_access && !root.active ? Theme.brand-primary : #111827; font-size: 26px; font-weight: 900; horizontal-alignment: center; vertical-alignment: center; } 
+            } 
+        }
+        VerticalLayout { 
+            alignment: center; spacing: 6px; horizontal-stretch: 1;
+            HorizontalLayout {
+                alignment: space-between;
+                Text { text: root.title; font-size: 16px; font-weight: 800; color: root.has_access ? Theme.text-primary : Theme.text-muted; }
+                Rectangle {
+                    width: 8px; height: 8px; border-radius: 4px;
+                    background: !root.has_access ? Theme.brand-danger : Theme.brand-success;
+                }
+            }
+            Text { text: root.subtitle; font-size: 12px; color: Theme.text-secondary; }
+            HorizontalLayout {
+                alignment: space-between;
+                Text { text: "NODE CLUSTER: " + root.node_ip; font-size: 11px; font-family: "monospace"; color: #64748B; }
+                Text { text: !root.has_access ? "RESTRICTED" : (root.active ? "MATRIX ROUTING ENGAGED" : "ONLINE STABLE"); font-size: 10px; font-weight: 900; color: !root.has_access ? Theme.brand-danger : (root.active ? Theme.brand-primary : Theme.brand-success); letter-spacing: 0.5px; }
+            }
+        }
     }
     ta := TouchArea { clicked => { if (root.has_access) { root.clicked(); } } }
+}
+
+component ToggleAccessCheckbox inherits Rectangle {
+    in property <string> text;
+    in-out property <bool> checked;
+    height: 32px;
+    HorizontalLayout {
+        spacing: 10px; alignment: start;
+        Rectangle {
+            width: 18px; height: 18px; border-radius: 4px; border-width: 1.5px;
+            border-color: root.checked ? Theme.brand-primary : #475569;
+            background: root.checked ? #00E5FF1F : transparent;
+            y: 7px;
+            if (root.checked) : Text { text: "✓"; font-size: 12px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; vertical-alignment: center; }
+        }
+        Text { text: root.text; font-size: 13px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; }
+    }
+    TouchArea { clicked => { root.checked = !root.checked; } }
 }
 
 export struct UserData { username: string, role: string, last_login: string, full_name: string, designation: string, expires_at: string, allowed_schemas: string }
@@ -98,20 +150,17 @@ export component AppWindow inherits Window {
     in-out property <string> pending_notification_name: "NONE"; in-out property <string> polling_error_msg: ""; in-out property <[UserData]> active_users_list: []; in-out property <string> op_target_schema: "none";
     in-out property <string> active_schema_action: "none"; in-out property <string> op_status_msg: ""; in-out property <bool> op_is_error: false;
     
-    // Synced vector collection property array to hold rows inside the enrollment screen layout switch bounds
     in-out property <[UserData]> pending_users_list: [];
     in-out property <bool> show_welcome_popup: false;
     
-    // --- ONE-TIME EXPIRED TOKEN FORCED STATE MATRIX FLAGS ---
     in-out property <bool> forced_password_reset_state: false;
     in-out property <string> form_new_pass: "";
     in-out property <string> form_confirm_pass: "";
     in-out property <string> password_reset_error: "";
 
-    // Operator Control update properties
     in-out property <string> lease_target_user: ""; in-out property <string> lease_target_role: "Operator"; in-out property <string> lease_target_days: "30"; in-out property <string> lease_target_schemas: "";
+    in-out property <bool> cb_gpf: false; in-out property <bool> cb_vlcs: false; in-out property <bool> cb_sai: false; in-out property <bool> cb_dak: false;
 
-    // Schema variables memory
     in-out property <string> op_regd_no: ""; in-out property <string> op_series_id: ""; in-out property <string> op_account_no: ""; in-out property <string> op_holder_name: ""; in-out property <bool> gpf_case_found: false; in-out property <GpfCaseDetails> active_gpf_case; in-out property <string> op_gpf_new_status: "";
     in-out property <string> vlcs_ddo_code: ""; in-out property <string> vlcs_emp_code: ""; in-out property <string> vlcs_emp_mobile: "";
     in-out property <string> entry_app_num: ""; in-out property <string> entry_letter_no: ""; in-out property <string> entry_section: ""; in-out property <string> entry_subject: ""; in-out property <string> entry_no_of_copies: "1"; in-out property <string> find_app_num: ""; in-out property <string> edit_app_num: ""; in-out property <string> edit_section: ""; in-out property <string> edit_subject: ""; in-out property <string> letter_app_num: ""; in-out property <string> letter_letter_no: ""; in-out property <string> letter_section: ""; in-out property <string> letter_subject: ""; in-out property <string> letter_no_of_copies: "1";
@@ -121,14 +170,15 @@ export component AppWindow inherits Window {
     callback request_authentication(string, string); callback request_registration(string, string, string, string, string, string, string); callback approve_pending_operator(string, string); callback deny_pending_operator(string); callback request_logout(); callback load_users_list(); callback request_profile_pic_update();
     callback extend_user_lease(string, string, string, string); callback ban_user(string); callback request_find_gpf_case(string); callback request_delete_full_case(string, string, string); callback request_delete_application(string); callback request_delete_precalc(string); callback request_update_gpf_status(string, string);
     callback request_vlcs_get_ddo(string); callback request_vlcs_update_ddo(string); callback request_vlcs_get_emp(string); callback request_vlcs_update_emp(string, string);
-    callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback request_find_outward_dak(string); callback request_update_outward_dak(); callback request_submit_correspondence();
+    callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback property_changed_schemas(string); callback request_find_outward_dak(string); callback request_update_outward_dak(); callback request_submit_correspondence();
     callback request_pension_details(string); callback request_pension_status(string);
     
     callback reset_user_password(string);
     callback commit_forced_password_update(string, string);
     callback load_pending_users_list();
+    callback request_hwid_unblock(string);
+    callback commit_schema_toggles(string, bool, bool, bool, bool);
 
-    // Main Layout Root Window Layer Stack
     Rectangle {
         HorizontalLayout {
             padding: 0px; spacing: 0px;
@@ -136,18 +186,6 @@ export component AppWindow inherits Window {
                 width: root.sidebar_collapsed ? 74px : 260px; background: Theme.bg-sidebar; border-width: 1px; border-color: Theme.border-dark;
                 VerticalLayout {
                     padding: 16px; spacing: 10px; alignment: start;
-                    HorizontalLayout {
-                        alignment: root.sidebar_collapsed ? LayoutAlignment.center : LayoutAlignment.start; padding-bottom: 16px; spacing: 12px;
-                        Rectangle { 
-                            width: 38px; height: 38px; border-radius: 8px; background: logo_ta.has-hover ? Theme.bg-card : transparent; 
-                            Text { text: "⚙"; font-size: 20px; color: Theme.brand-primary; horizontal-alignment: center; vertical-alignment: center; }
-                            logo_ta := TouchArea { clicked => { root.sidebar_collapsed = !root.sidebar_collapsed; } } 
-                        }
-                        if (!root.sidebar_collapsed) : VerticalLayout { spacing: 2px; alignment: center;
-                            Text { text: "IRONVAULT"; font-size: 18px; font-weight: 900; color: Theme.text-primary; letter-spacing: 2px; }
-                            Text { text: "SECURE ENCLAVE NODE"; font-size: 9px; color: Theme.brand-primary; font-weight: 800; letter-spacing: 0.5px; } }
-                    }
-                    Rectangle { height: 1px; background: Theme.border-dark; opacity: 0.5; } Rectangle { height: 8px; }
                     NavItem { text: "Command Dashboard"; icon_image: @image-url("assets/layout-dashboard.svg"); active: root.active_tab == "overview"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "overview"; } }
                     NavItem { text: "Operations Matrix"; icon_image: @image-url("assets/database.svg"); active: root.active_tab == "operations"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "operations"; root.op_status_msg = ""; } }
                     if (root.current_user_role == "SuperAdmin") : NavItem { text: "Access Requests"; icon_image: @image-url("assets/bell.svg"); active: root.active_tab == "approvals"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "approvals"; root.load_pending_users_list(); } }
@@ -175,8 +213,6 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1; background: Theme.bg-main; 
                 VerticalLayout {
                     padding: 0px; spacing: 0px;
-
-                    // --- HIGH-CLASS STYLIST ENTERPRISE TOP HEADER NAVIGATION BAR ---
                     Rectangle {
                         height: 70px; background: Theme.bg-sidebar; border-width: 1px; border-color: Theme.border-dark;
                         HorizontalLayout {
@@ -188,7 +224,6 @@ export component AppWindow inherits Window {
                             }
                             HorizontalLayout {
                                 spacing: 24px; alignment: center;
-                                
                                 VerticalLayout {
                                     alignment: center;
                                     Rectangle {
@@ -197,21 +232,17 @@ export component AppWindow inherits Window {
                                         TouchArea { clicked => { Theme.is-light-mode = !Theme.is-light-mode; } }
                                     }
                                 }
-
                                 Rectangle { width: 1px; background: Theme.border-color; height: 30px; y: 20px; }
-
                                 HorizontalLayout {
                                     spacing: 12px; alignment: center;
                                     VerticalLayout {
                                         alignment: center; spacing: 2px;
-                                        Text { text: root.current_user_full_name; font-size: 14px; font-weight: 800; color: Theme.text-primary; horizontal-alignment: right; }
-                                        Text { text: root.current_user_role; font-size: 11px; font-weight: 800; color: Theme.brand-warning; horizontal-alignment: right; }
+                                        Text { text: root.current_user_full_name; font-size: 14px; font-weight: 800; color: Theme.text-primary; horizontal-alignment: text-alignment-right; }
+                                        Text { text: root.current_user_role; font-size: 11px; font-weight: 800; color: Theme.brand-warning; horizontal-alignment: text-alignment-right; }
                                     }
                                     VerticalLayout { alignment: center; MiniAvatar { username: root.current_user_name; avatar_source: root.current_avatar_image; has_avatar: root.current_avatar_loaded; } }
                                 }
-
                                 Rectangle { width: 1px; background: Theme.border-color; height: 30px; y: 20px; }
-
                                 VerticalLayout {
                                     alignment: center;
                                     Rectangle {
@@ -224,7 +255,6 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // Main Viewport Container Area
                     VerticalLayout {
                         padding-left: 40px; padding-right: 40px; padding-top: 40px; padding-bottom: 20px; vertical-stretch: 1;
 
@@ -254,33 +284,42 @@ export component AppWindow inherits Window {
                                     Text { text: "←"; font-size: 18px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; vertical-alignment: center; }
                                     back_ta := TouchArea { clicked => { root.op_target_schema = "none"; root.active_schema_action = "none"; root.op_status_msg = ""; } }
                                 }
-                                Text { text: root.op_target_schema == "none" ? "Multi-Node Matrix Routing Ledger" : (root.op_target_schema == "gpffp" ? "GPF Final Payment System" : (root.op_target_schema == "vlcs" ? "Voucher Level Computerize System" : (root.op_target_schema == "sai_agartala" ? "P-SAI Core Pension Subsystem" : "Pension DAK System"))); font-size: 32px; font-weight: 800; color: Theme.text-primary; vertical-alignment: center; }
+                                Text { text: root.op_target_schema == "none" ? "Multi-Node Matrix Routing Ledger" : (root.op_target_schema == "gpffp" ? "GPF Final Payment System" : (root.op_target_schema == "vlcs" ? "Voucher Level Computerize System" : (root.op_target_schema == "sai_agartala" ? "P-SAI Core Pension Subsystem" : "Pension DAK System"))); font-size: 30px; font-weight: 900; color: Theme.text-primary; vertical-alignment: center; }
                             }
                             
                             ScrollView {
                                 width: 100%; vertical-stretch: 1;
                                 VerticalLayout {
-                                    spacing: 30px; padding-bottom: 40px;
+                                    spacing: 32px; padding-bottom: 40px;
                                     
                                     if (root.op_target_schema == "none") : VerticalLayout {
-                                        spacing: 32px;
+                                        spacing: 28px;
+                                        
                                         VerticalLayout {
                                             spacing: 14px;
-                                            Text { text: "SERVER CLUSTER INTEL LOCALHOST: 192.168.100.247 (FINANCE & ADMINISTRATION SCHEMAS)"; font-size: 12px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 1px; }
                                             HorizontalLayout {
-                                                spacing: 20px;
-                                                SchemaCard { icon_text: "₹"; title: "gpffp: GPF Final Payment System"; has_access: root.schema_access.gpffp; active: false; clicked => { root.op_target_schema = "gpffp"; root.active_schema_action = "gpffp_find"; } }
-                                                SchemaCard { icon_text: "📄"; title: "VLCS: Voucher Level Computerize System"; has_access: root.schema_access.vlcs; active: false; clicked => { root.op_target_schema = "vlcs"; root.active_schema_action = "vlcs_ddo"; } }
+                                                spacing: 12px; alignment: LayoutAlignment.start;
+                                                Rectangle { width: 4px; height: 16px; background: Theme.brand-primary; border-radius: 2px; y: 2px; }
+                                                Text { text: "CLUSTER NODE GROUP ALPHA: CORE ACCOUNTING FINANCE SYSTEMS"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 1px; }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: 24px;
+                                                PremiumSchemaCard { icon_text: "₹"; title: "gpffp: Final Payment Engine"; subtitle: "Processes provident fund settlement closures and automated clearance vouchers."; node_ip: "192.168.100.247"; has_access: root.schema_access.gpffp; active: false; clicked => { root.op_target_schema = "gpffp"; root.active_schema_action = "gpffp_find"; } }
+                                                PremiumSchemaCard { icon_text: "📄"; title: "vlcs: Voucher Computerization Subsystem"; subtitle: "Compiles drawing officer transaction profiles and localized sub-treasury telemetry."; node_ip: "192.168.100.250"; has_access: root.schema_access.vlcs; active: false; clicked => { root.op_target_schema = "vlcs"; root.active_schema_action = "vlcs_ddo"; } }
                                             }
                                         }
                                        
                                         VerticalLayout {
                                             spacing: 14px;
-                                            Text { text: "SERVER CLUSTER INTEL LOCALHOST: 192.168.0.140 (ACTIVE RETIREMENT BENFICIARY PENSION ENGINES)"; font-size: 12px; font-weight: 900; color: Theme.brand-success; letter-spacing: 1px; }
                                             HorizontalLayout {
-                                                spacing: 20px;
-                                                SchemaCard { icon_text: "🛡"; title: "sai_agartala: P-SAI Core Pension Engine Framework"; has_access: root.schema_access.sai_agartala; active: false; clicked => { root.op_target_schema = "sai_agartala"; root.active_schema_action = "sai_biographical"; } }
-                                                SchemaCard { icon_text: "📮"; title: "pendak: Pension Inward Outward DAK Diary System"; has_access: root.schema_access.pendak; active: false; clicked => { root.op_target_schema = "pendak"; root.active_schema_action = "pendak_entry"; } }
+                                                spacing: 12px; alignment: LayoutAlignment.start;
+                                                Rectangle { width: 4px; height: 16px; background: Theme.brand-success; border-radius: 2px; y: 2px; }
+                                                Text { text: "CLUSTER NODE GROUP BETA: BENEFICIARY DISBURSEMENT PENSION SYSTEMS"; font-size: 13px; font-weight: 900; color: Theme.brand-success; letter-spacing: 1px; }
+                                            }
+                                            HorizontalLayout {
+                                                spacing: 24px;
+                                                PremiumSchemaCard { icon_text: "🛡"; title: "sai_agartala: P-SAI Core Framework"; subtitle: "Manages biographical indexing, superannuation mapping, and settlement tracking matrices."; node_ip: "192.168.0.140"; has_access: root.schema_access.sai_agartala; active: false; clicked => { root.op_target_schema = "sai_agartala"; root.active_schema_action = "sai_biographical"; } }
+                                                PremiumSchemaCard { icon_text: "📮"; title: "pendak: Inward Outward DAK Diary"; subtitle: "Tracks official departmental communications, service books, and package barcodes."; node_ip: "192.168.0.145"; has_access: root.schema_access.pendak; active: false; clicked => { root.op_target_schema = "pendak"; root.active_schema_action = "pendak_entry"; } }
                                             }
                                         }
                                     }
@@ -305,7 +344,6 @@ export component AppWindow inherits Window {
                             }
                         }
 
-                        // FIXED: Enrollment Request List uses an itemized iterator loops block over rows
                         if (root.active_tab == "approvals") : VerticalLayout {
                             spacing: 20px; Text { text: "Security Token Enrollment Requests"; font-size: 32px; font-weight: 800; color: Theme.text-primary; }
                             Rectangle {
@@ -322,7 +360,7 @@ export component AppWindow inherits Window {
                                                     padding: 16px; alignment: space-between;
                                                     VerticalLayout { spacing: 4px; Text { text: "OPERATOR IDENTIFICATION INDEX"; font-size: 10px; color: Theme.text-muted; } Text { text: "@" + p_user.username + " (" + p_user.full_name + ")"; font-size: 16px; font-weight: 900; color: Theme.brand-primary; } }
                                                     HorizontalLayout {
-                                                        spacing: 12px; alignment: center;
+                                                        spacing: 12px; alignment: LayoutAlignment.center;
                                                         Button { text: "🛡️ Sign Authorization"; clicked => { root.approve_pending_operator(p_user.username, "Operator"); } }
                                                         Button { text: "🚫 Terminate Signal"; clicked => { root.deny_pending_operator(p_user.username); } }
                                                     }
@@ -402,7 +440,16 @@ export component AppWindow inherits Window {
                                                                 alignment: center;
                                                                 Button {
                                                                     text: "⚙️ Select Configuration"; height: 32px;
-                                                                    clicked => { root.lease_target_user = user.username; root.lease_target_role = user.role; root.lease_target_days = "30"; root.lease_target_schemas = user.allowed_schemas; }
+                                                                    clicked => { 
+                                                                        root.lease_target_user = user.username; 
+                                                                        root.lease_target_role = user.role; 
+                                                                        root.lease_target_days = "30"; 
+                                                                        root.lease_target_schemas = user.allowed_schemas;
+                                                                        root.cb_gpf = user.allowed_schemas.contains("gpffp");
+                                                                        root.cb_vlcs = user.allowed_schemas.contains("vlcs");
+                                                                        root.cb_sai = user.allowed_schemas.contains("sai_agartala");
+                                                                        root.cb_dak = user.allowed_schemas.contains("pendak");
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -427,7 +474,7 @@ export component AppWindow inherits Window {
                                                     if (root.lease_target_user == "") : VerticalLayout {
                                                         alignment: center; spacing: 12px; height: 350px;
                                                         Text { text: "🔒 SECURITY OVERRIDE PANEL LOCKED"; font-size: 13px; font-weight: 900; color: Theme.brand-warning; horizontal-alignment: TextHorizontalAlignment.center; }
-                                                        Text { text: "Select an operator item from the active database ledger on the left to edit network clearance levels, re-route sections, trigger credential resets, or issue revocations."; font-size: 12px; color: Theme.text-muted; horizontal-alignment: TextHorizontalAlignment.center; wrap: word-wrap; }
+                                                        Text { text: "Select an operator item from the active database ledger on the left to edit network clearance levels, re-route sections, trigger credential resets, or issue revocations.", font-size: 12px; color: Theme.text-muted; horizontal-alignment: TextHorizontalAlignment.center; wrap: word-wrap; }
                                                     }
                                                     if (root.lease_target_user != "") : VerticalLayout {
                                                         spacing: 16px;
@@ -440,22 +487,46 @@ export component AppWindow inherits Window {
                                                         Text { text: "2. WORKSPACE ACCESS PARAMETERS"; font-size: 11px; font-weight: 900; color: Theme.brand-primary; }
                                                         VerticalLayout { spacing: 4px; Text { text: "SECURITY CLEARANCE CLASS GROUP ROLE"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.lease_target_role; placeholder_text: "Operator / SuperAdmin"; height: Theme.input-height; } }
                                                         VerticalLayout { spacing: 4px; Text { text: "LEASE COMPLIANCE VALIDATION RENEWAL INTERVAL (DAYS)"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.lease_target_days; placeholder_text: "30"; height: Theme.input-height; } }
-                                                        VerticalLayout { spacing: 4px; Text { text: "RE-ROUTE ASSIGNED SCHEMAS PATHCONTEXT SECTIONS"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.lease_target_schemas; placeholder_text: "gpffp, vlcs, sai_agartala, pendak"; height: Theme.input-height; } }
                                                         
+                                                        VerticalLayout {
+                                                            spacing: 6px;
+                                                            Text { text: "ASSIGN GRANULAR SCHEMA MATRIX PRIVILEGES"; font-size: 10px; font-weight: 800; color: Theme.text-muted; }
+                                                            HorizontalLayout {
+                                                                spacing: 16px;
+                                                                ToggleAccessCheckbox { text: "gpffp (Payments)"; checked <=> root.cb_gpf; }
+                                                                ToggleAccessCheckbox { text: "vlcs (Vouchers)"; checked <=> root.cb_vlcs; }
+                                                                ToggleAccessCheckbox { text: "sai_agartala (P-SAI)"; checked <=> root.cb_sai; }
+                                                                ToggleAccessCheckbox { text: "pendak (DAK Diary)"; checked <=> root.cb_dak; }
+                                                            }
+                                                        }
+
+                                                        // FIXED: Relocated multi-statement generation down to Rust callback level to bypass compiler property limitations
                                                         HorizontalLayout {
-                                                            alignment: end; spacing: 12px; padding-top: 4px;
-                                                            Button { text: "✏️ Save Modification Pass"; height: 36px; clicked => { root.extend_user_lease(root.lease_target_user, root.lease_target_role, root.lease_target_days, root.lease_target_schemas); root.lease_target_user = ""; } }
+                                                            alignment: LayoutAlignment.end; spacing: 12px; padding-top: 4px;
+                                                            Button { 
+                                                                text: "✏️ Save Modification Pass"; height: 36px; 
+                                                                clicked => { 
+                                                                    root.commit_schema_toggles(root.lease_target_user, root.cb_gpf, root.cb_vlcs, root.cb_sai, root.cb_dak);
+                                                                    root.extend_user_lease(root.lease_target_user, root.lease_target_role, root.lease_target_days, root.lease_target_schemas); 
+                                                                    root.lease_target_user = ""; 
+                                                                } 
+                                                            }
                                                         }
 
                                                         Rectangle { height: 1px; background: Theme.border-color; opacity: 0.4; }
                                                         
                                                         Text { text: "3. CRITICAL SECURITY OVERRIDES"; font-size: 11px; font-weight: 900; color: Theme.brand-danger; }
                                                         HorizontalLayout {
-                                                            spacing: 12px; alignment: stretch;
+                                                            spacing: 12px; alignment: LayoutAlignment.stretch;
                                                             Button { text: "🔑 Reset One-Time Access Token"; height: 38px; horizontal-stretch: 1; clicked => { root.reset_user_password(root.lease_target_user); root.lease_target_user = ""; } }
                                                             Button { text: "🚨 Ban Operator Profile"; height: 38px; horizontal-stretch: 1; clicked => { root.ban_user(root.lease_target_user); root.lease_target_user = ""; } }
                                                         }
                                                         
+                                                        HorizontalLayout {
+                                                            padding-top: 4px;
+                                                            Button { text: "🔓 Release Hardware Fingerprint (HWID Unblock)"; height: 36px; horizontal-stretch: 1; clicked => { root.request_hwid_unblock(root.lease_target_user); root.lease_target_user = ""; } }
+                                                        }
+
                                                         Rectangle { height: 8px; }
                                                         Rectangle { height: 1px; background: Theme.border-color; }
                                                         
@@ -473,7 +544,6 @@ export component AppWindow inherits Window {
                         }
                     }
 
-                    // Global notification overlay row area
                     if (root.op_status_msg != "") : Rectangle {
                         height: 54px;
                         background: root.op_is_error ? #7F1D1D4A : #064E3B4A;
@@ -492,131 +562,45 @@ export component AppWindow inherits Window {
             }
         }
 
-        // --- LAYERED MODAL UN-BYPASSABLE FORCED PASSWORD CONSOLE REGISTRATION ---
         if (root.forced_password_reset_state) : Rectangle {
             background: #05070BD9;
-
-            // Absorb all mouse/touch events behind the dialog
-            TouchArea {}
-
+            TouchArea {} 
+            
             Rectangle {
-                width: 460px;
-                height: 380px;
-
-                // Center the dialog
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - self.height) / 2;
-
-                background: Theme.bg-card;
-                border-radius: 16px;
-                border-width: 2px;
-                border-color: Theme.brand-warning;
-                drop-shadow-blur: 24px;
-                drop-shadow-color: #FFB80040;
-
+                width: 460px; height: 380px; background: Theme.bg-card; border-radius: 16px; border-width: 2px; border-color: Theme.brand-warning; drop-shadow-blur: 24px; drop-shadow-color: #FFB80040;
+                horizontal-alignment: center; vertical-alignment: center;
+                
                 VerticalLayout {
-                    width: parent.width;
-                    height: parent.height;
-
-                    padding: 32px;
-                    spacing: 18px;
-
+                    padding: 32px; spacing: 18px;
+                    
                     VerticalLayout {
                         spacing: 6px;
-
-                        Text {
-                            text: "🛡️ FORCED CREDENTIAL MITIGATION RECOGNIZED";
-                            font-size: 11px;
-                            font-weight: 900;
-                            color: Theme.brand-warning;
-                            horizontal-alignment: TextHorizontalAlignment.center;
-                            letter-spacing: 0.5px;
-                        }
-
-                        Text {
-                            text: "Your session token was generated via a dynamic administrator one-time reset. You must establish a strong custom master password sequence before terminal initialization.";
-                            font-size: 12px;
-                            color: Theme.text-secondary;
-                            horizontal-alignment: TextHorizontalAlignment.center;
-                            wrap: word-wrap;
-                        }
+                        Text { text: "🛡️ FORCED CREDENTIAL MITIGATION RECOGNIZED"; font-size: 11px; font-weight: 900; color: Theme.brand-warning; horizontal-alignment: TextHorizontalAlignment.center; letter-spacing: 0.5px; }
+                        Text { text: "Your session token was generated via a dynamic administrator one-time reset. You must establish a strong custom master password sequence before terminal initialization.", font-size: 12px; color: Theme.text-secondary; horizontal-alignment: TextHorizontalAlignment.center; wrap: word-wrap; }
                     }
-
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.border-color;
-                    }
-
+                    
+                    Rectangle { height: 1px; background: Theme.border-color; }
+                    
                     VerticalLayout {
                         spacing: 12px;
-
-                        VerticalLayout {
-                            spacing: 4px;
-
-                            Text {
-                                text: "NEW MASTER PASSWORD";
-                                font-size: 10px;
-                                font-weight: 800;
-                                color: Theme.text-muted;
-                            }
-
-                            LineEdit {
-                                text <=> root.form_new_pass;
-                                input-type: password;
-                                height: Theme.input-height;
-                                placeholder_text: "Enter high-entropy sequence";
-                            }
-                        }
-
-                        VerticalLayout {
-                            spacing: 4px;
-
-                            Text {
-                                text: "CONFIRM MASTER PASSWORD";
-                                font-size: 10px;
-                                font-weight: 800;
-                                color: Theme.text-muted;
-                            }
-
-                            LineEdit {
-                                text <=> root.form_confirm_pass;
-                                input-type: password;
-                                height: Theme.input-height;
-                                placeholder_text: "Repeat sequence exactly";
-                            }
-                        }
+                        VerticalLayout { spacing: 4px; Text { text: "NEW MASTER PASSWORD"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.form_new_pass; input-type: password; height: Theme.input-height; placeholder_text: "Enter high-entropy sequence"; } }
+                        VerticalLayout { spacing: 4px; Text { text: "CONFIRM MASTER PASSWORD"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.form_confirm_pass; input-type: password; height: Theme.input-height; placeholder_text: "Repeat sequence exactly"; } }
                     }
-
-                    if (root.password_reset_error != "") : Text {
-                        text: root.password_reset_error;
-                        color: Theme.brand-danger;
-                        font-size: 12px;
-                        font-weight: 800;
-                        horizontal-alignment: TextHorizontalAlignment.center;
-                    }
-
+                    
+                    if (root.password_reset_error != "") : Text { text: root.password_reset_error; color: Theme.brand-danger; font-size: 12px; font-weight: 800; horizontal-alignment: TextHorizontalAlignment.center; }
+                    
                     Button {
-                        text: "🔒 Authorize and Update Enclave Key";
-                        height: 42px;
-
+                        text: "🔒 Authorize and Update Enclave Key"; height: 42px;
                         clicked => {
-                            if (root.form_new_pass == "") {
-                                root.password_reset_error = "Error: Input cannot be empty.";
-                            } else if (root.form_new_pass != root.form_confirm_pass) {
-                                root.password_reset_error = "Error: Password confirmation mismatch.";
-                            } else {
-                                root.commit_forced_password_update(
-                                    root.current_user_name,
-                                    root.form_new_pass
-                                );
-                            }
+                            if (root.form_new_pass == "") { root.password_reset_error = "Error: Input cannot be empty."; }
+                            else if (root.form_new_pass != root.form_confirm_pass) { root.password_reset_error = "Error: Password confirmation mismatch."; }
+                            else { root.commit_forced_password_update(root.current_user_name, root.form_new_pass); }
                         }
                     }
                 }
             }
         }
 
-        // Layered Modal Welcome Greeting Dialog Box Panel
         if (root.show_welcome_popup) : Rectangle {
             background: #000000B3;
             TouchArea { } 
@@ -627,8 +611,9 @@ export component AppWindow inherits Window {
                     VerticalLayout {
                         spacing: 8px;
                         Text { text: "🔒 SECURE ENCLAVE SESSION ENGAGED"; font-size: 11px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: TextHorizontalAlignment.center; letter-spacing: 1px; }
-                        Text { text: "Welcome, " + root.current_user_full_name; font-size: 20px; font-weight: 800; color: Theme.text-primary; horizontal-alignment: TextHorizontalAlignment.center; }
-                        Text { text: "Clearance Class: " + root.current_user_role; font-size: 13px; font-weight: 700; color: Theme.brand-warning; horizontal-alignment: TextHorizontalAlignment.center; }
+                        // FIXED: Re-mapped alignment properties inside individual target text blocks correctly
+                        Text { text: "Welcome, " + root.current_user_full_name; font-size: 20px; font-weight: 800; color: Theme.text-primary; horizontal-alignment: text-alignment-center; }
+                        Text { text: "Clearance Class: " + root.current_user_role; font-size: 13px; font-weight: 700; color: Theme.brand-warning; horizontal-alignment: text-alignment-center; }
                     }
                     Button { text: "Enter Command Console Node"; height: 40px; clicked => { root.show_welcome_popup = false; } }
                 }
