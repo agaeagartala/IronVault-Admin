@@ -1,6 +1,7 @@
 // Best-in-Class Frost Enclave / Premium Cyberpunk Hybrid Theme Schema
 
 export global Theme {
+    
     // --- LIGHT & DARK DYNAMIC VARIANT CONTROLLERS ---
     in-out property <bool> is-light-mode: false;
 
@@ -59,6 +60,7 @@ export global Theme {
 }
 
 export component SchemaAction inherits Rectangle {
+    in property <image> icon; // ADDED: Property to support vector image paths
     in property <string> icon_text;
     in property <string> title;
     in property <bool> active;
@@ -77,7 +79,25 @@ export component SchemaAction inherits Rectangle {
 
     HorizontalLayout {
         padding-left: 16px; padding-right: 16px; spacing: 12px; alignment: center;
-        Text { text: icon_text; font-size: 16px; vertical-alignment: center; color: Theme.brand-primary; }
+        
+        // ADDED: Renders the SVG asset safely when an image path is declared
+        if (root.icon.width > 0 && root.icon.height > 0) : Image {
+            source: root.icon;
+            width: 16px;
+            height: 16px;
+            vertical-alignment: center;
+            // Matches the style by dynamic colorizing if the SVG is monochrome
+            colorize: active ? Theme.brand-primary : Theme.text-primary;
+        }
+        
+        // Renders only if no image path is provided and an emoji exists instead
+        if ((root.icon.width == 0 || root.icon.height == 0) && icon_text != "") : Text { 
+            text: icon_text; 
+            font-size: 16px; 
+            vertical-alignment: center; 
+            color: Theme.brand-primary; 
+        }
+        
         Text { text: title; font-size: 13px; font-weight: 800; color: active ? Theme.brand-primary : Theme.text-primary; vertical-alignment: center; letter-spacing: 0.2px; }
     }
     ta := TouchArea { clicked => { root.clicked(); } }

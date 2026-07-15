@@ -28,24 +28,32 @@ export component GpfFinalPaymentView inherits VerticalLayout {
     callback request_update_gpf_status(string, string);
 
     spacing: 20px;
+    
     HorizontalLayout {
         spacing: 12px;
+        
+        // FIXED: Replaced nested Image with the clean 'icon' property approach
         SchemaAction { 
-            icon_text: "🔍"; 
+            // icon: @image-url("assets/information-circle.svg");
+            icon_text: "🔍";
             title: "Get Case Details"; 
             active: root.active_schema_action == "gpffp_find"; 
-            clicked => { root.active_schema_action = "gpffp_find"; root.op_status_msg = ""; } }
+            clicked => { root.active_schema_action = "gpffp_find"; root.op_status_msg = ""; } 
+        }
         SchemaAction { 
             icon_text: "✏️"; 
             title: "Update Case Status"; 
             active: root.active_schema_action == "gpffp_update"; 
-            clicked => { root.active_schema_action = "gpffp_update"; root.op_status_msg = ""; } }
+            clicked => { root.active_schema_action = "gpffp_update"; root.op_status_msg = ""; } 
+        }
         SchemaAction { 
             icon_text: "🗑️"; 
             title: "Destructive Options"; 
             active: root.active_schema_action == "gpffp_delete"; 
-            clicked => { root.active_schema_action = "gpffp_delete"; root.op_status_msg = ""; } }
+            clicked => { root.active_schema_action = "gpffp_delete"; root.op_status_msg = ""; } 
+        }
     }
+    
     Rectangle { height: 1px; background: Theme.border-color; opacity: 0.3; }
     
     if (root.active_schema_action == "gpffp_find") : Rectangle {
@@ -57,10 +65,12 @@ export component GpfFinalPaymentView inherits VerticalLayout {
             HorizontalLayout { 
                 spacing: 15px; 
                 Button { 
-                    text: "🔍  Discover Case Profile Natively";
+                    text: "🔍   Discover Case Profile Natively";
                     height: 42px;
                     horizontal-stretch: 1; 
-                    clicked => { root.request_find_gpf_case(root.op_regd_no); } } }
+                    clicked => { root.request_find_gpf_case(root.op_regd_no); } 
+                } 
+            }
             if (root.gpf_case_found) : VerticalLayout {
                 spacing: 0px; Rectangle { height: 10px; }
                 Rectangle {
@@ -85,6 +95,7 @@ export component GpfFinalPaymentView inherits VerticalLayout {
             }
         }
     }
+    
     if (root.active_schema_action == "gpffp_update") : Rectangle {
         background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.brand-warning; drop-shadow-blur: 15px; drop-shadow-color: #F59E0B1A;
         VerticalLayout {
@@ -98,6 +109,7 @@ export component GpfFinalPaymentView inherits VerticalLayout {
             Button { text: "✏️ Commit Status Override"; height: 42px; clicked => { root.request_update_gpf_status(root.op_regd_no, root.op_gpf_new_status); } }
         }
     }
+    
     if (root.active_schema_action == "gpffp_delete") : Rectangle {
         background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.brand-danger; drop-shadow-blur: 15px; drop-shadow-color: #EF44441A;
         VerticalLayout {
