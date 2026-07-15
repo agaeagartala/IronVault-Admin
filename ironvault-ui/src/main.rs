@@ -179,6 +179,7 @@ async fn main() -> Result<(), slint::PlatformError> {
                             } else {
                                 ui.set_show_welcome_popup(true);
                                 ui.set_active_tab("overview".into());
+                                ui.invoke_trigger_log_stream_reload();
                             }
                             
                             if avatar_path.exists() {
@@ -549,6 +550,42 @@ async fn main() -> Result<(), slint::PlatformError> {
                     }
                 }).unwrap();
             }
+        });
+    });
+
+    // --- LOG STREAM CONNECTOR PASS BINDING ---
+    let app_weak_logs_reload = app_weak_main.clone();
+    let audit_logs_reload = Arc::clone(&audit_clone);
+    app.on_trigger_log_stream_reload(move || {
+        let ui_weak = app_weak_logs_reload.clone();
+        let logger = audit_logs_reload.clone();
+        
+        tokio::spawn(async move {
+            let raw_records = logger.query_logs_optimized(40);
+            
+            let ui_mapped_records: Vec<AuditLogUiData> = raw_records
+                .into_iter()
+                .map(|item| {
+                    let formatted_time = if item.timestamp.len() >= 16 {
+                        item.timestamp[11..16].to_string()
+                    } else {
+                        item.timestamp
+                    };
+                    
+                    AuditLogUiData {
+                        timestamp: formatted_time.into(),
+                        operator_id: item.username.into(),
+                        operation_action: item.action.into(),
+                        level: item.impact_level.into(),
+                    }
+                })
+                .collect();
+                
+            slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_dashboard_audit_stream(ModelRc::from(Rc::new(VecModel::from(ui_mapped_records))));
+                }
+            }).unwrap();
         });
     });
 
@@ -935,9 +972,10 @@ async fn main() -> Result<(), slint::PlatformError> {
     });
 
     let app_weak_chk_fetch = app_weak_main.clone();
+    let db_chk_fetch = Arc::clone(&db_clone);
     app.on_request_checkbox_states_fetch(move |target_user| {
         let ui_weak = app_weak_chk_fetch.clone();
-        let db = db_clone.clone();
+        let db = db_chk_fetch.clone();
         let user_str = target_user.to_string().trim().to_string();
         tokio::spawn(async move {
             let pool = db.get_pool().clone();
@@ -952,6 +990,42 @@ async fn main() -> Result<(), slint::PlatformError> {
                     }
                 }).unwrap();
             }
+        });
+    });
+
+    // --- LOG STREAM CONNECTOR PASS BINDING ---
+    let app_weak_logs_reload = app_weak_main.clone();
+    let audit_logs_reload = Arc::clone(&audit_clone);
+    app.on_trigger_log_stream_reload(move || {
+        let ui_weak = app_weak_logs_reload.clone();
+        let logger = audit_logs_reload.clone();
+        
+        tokio::spawn(async move {
+            let raw_records = logger.query_logs_optimized(40);
+            
+            let ui_mapped_records: Vec<AuditLogUiData> = raw_records
+                .into_iter()
+                .map(|item| {
+                    let formatted_time = if item.timestamp.len() >= 16 {
+                        item.timestamp[11..16].to_string()
+                    } else {
+                        item.timestamp
+                    };
+                    
+                    AuditLogUiData {
+                        timestamp: formatted_time.into(),
+                        operator_id: item.username.into(),
+                        operation_action: item.action.into(),
+                        level: item.impact_level.into(),
+                    }
+                })
+                .collect();
+                
+            slint::invoke_from_event_loop(move || {
+                if let Some(ui) = ui_weak.upgrade() {
+                    ui.set_dashboard_audit_stream(ModelRc::from(Rc::new(VecModel::from(ui_mapped_records))));
+                }
+            }).unwrap();
         });
     });
 

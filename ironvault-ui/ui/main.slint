@@ -27,7 +27,8 @@ component NavItem inherits Rectangle {
         VerticalLayout {
             alignment: center;
             Rectangle {
-                width: 24px; height: 24px;
+                width: 24px;
+                height: 24px;
                 Image { 
                     source: root.icon_image;
                     width: ta.has-hover ? 22px : (root.active ? 20px : 18px); height: ta.has-hover ? 22px : (root.active ? 20px : 18px);
@@ -90,7 +91,8 @@ component PremiumSchemaCard inherits Rectangle {
         VerticalLayout { 
             alignment: center;
             Rectangle { 
-                width: 56px; height: 56px; border-radius: 12px; 
+                width: 56px;
+                height: 56px; border-radius: 12px; 
                 background: !root.has_access ? #334155 : (root.active ? Theme.brand-primary : #00E5FF1A);
                 Image {
                     source: root.lucide_icon;
@@ -101,12 +103,14 @@ component PremiumSchemaCard inherits Rectangle {
             } 
         }
         VerticalLayout { 
-            alignment: center; spacing: 6px; horizontal-stretch: 1;
+            alignment: center;
+            spacing: 6px; horizontal-stretch: 1;
             HorizontalLayout {
                 alignment: space-between;
                 Text { text: root.title; font-size: 16px; font-weight: 800; color: root.has_access ? Theme.text-primary : Theme.text-muted; }
                 Rectangle {
-                    width: 8px; height: 8px; border-radius: 4px;
+                    width: 8px;
+                    height: 8px; border-radius: 4px;
                     background: !root.has_access ? Theme.brand-danger : Theme.brand-success;
                 }
             }
@@ -128,7 +132,8 @@ component ToggleAccessCheckbox inherits Rectangle {
     HorizontalLayout {
         spacing: 10px; alignment: start;
         Rectangle {
-            width: 18px; height: 18px; border-radius: 4px; border-width: 1.5px;
+            width: 18px; height: 18px; border-radius: 4px;
+            border-width: 1.5px;
             border-color: root.checked ? Theme.brand-primary : #475569;
             background: root.checked ? #00E5FF1F : transparent;
             y: 7px;
@@ -141,11 +146,12 @@ component ToggleAccessCheckbox inherits Rectangle {
         }
         Text { text: root.text; font-size: 13px; font-weight: 700; color: Theme.text-primary; vertical-alignment: center; }
     }
-    TouchArea { clicked => { root.checked = !root.checked; } }
+    TouchArea { checked => { root.checked = !root.checked; } }
 }
 
 export struct UserData { username: string, role: string, last_login: string, full_name: string, designation: string, expires_at: string, allowed_schemas: string }
 export struct SchemaAccessState { gpffp: bool, vlcs: bool, agtall: bool, agdak: bool, sai_agartala: bool, pendak: bool, penindex: bool }
+export struct AuditLogUiData { timestamp: string, operator_id: string, operation_action: string, level: string }
 
 export component AppWindow inherits Window {
     title: "IronVault Command Center";
@@ -171,6 +177,8 @@ export component AppWindow inherits Window {
 
     in-out property <string> lease_target_user: ""; in-out property <string> lease_target_role: "Operator"; in-out property <string> lease_target_days: "30"; in-out property <string> lease_target_schemas: "";
     in-out property <bool> cb_gpf: false; in-out property <bool> cb_vlcs: false; in-out property <bool> cb_sai: false; in-out property <bool> cb_dak: false;
+
+    in-out property <[AuditLogUiData]> dashboard_audit_stream: [];
 
     in-out property <string> op_regd_no: ""; in-out property <string> op_series_id: ""; in-out property <string> op_account_no: "";
     in-out property <string> op_holder_name: ""; in-out property <bool> gpf_case_found: false; in-out property <GpfCaseDetails> active_gpf_case; in-out property <string> op_gpf_new_status: "";
@@ -204,21 +212,25 @@ export component AppWindow inherits Window {
     callback request_hwid_unblock(string);
     callback commit_schema_toggles(string, bool, bool, bool, bool);
     callback request_checkbox_states_fetch(string);
+    callback trigger_log_stream_reload();
 
     Rectangle {
         HorizontalLayout {
-            padding: 0px; spacing: 0px;
+            padding: 0px;
+            spacing: 0px;
             if (root.is_logged_in) : Rectangle {
                 width: root.sidebar_collapsed ? 74px : 260px; background: Theme.bg-sidebar; border-width: 1px; border-color: Theme.border-dark;
                 
                 animate width { duration: 175ms; easing: ease-in-out; }
 
                 VerticalLayout {
-                    padding: 16px; spacing: 10px; alignment: start;
+                    padding: 16px;
+                    spacing: 10px; alignment: start;
                     HorizontalLayout {
                         alignment: root.sidebar_collapsed ? LayoutAlignment.center : LayoutAlignment.start; padding-bottom: 16px; spacing: 12px;
                         Rectangle { 
-                            width: 38px; height: 38px; border-radius: 8px; background: logo_ta.has-hover ? Theme.bg-card : transparent;
+                            width: 38px;
+                            height: 38px; border-radius: 8px; background: logo_ta.has-hover ? Theme.bg-card : transparent;
                             Image { 
                                 source: @image-url("assets/vultr-icon.svg");
                                 width: 42px; height: 42px; 
@@ -228,12 +240,13 @@ export component AppWindow inherits Window {
                             }
                             logo_ta := TouchArea { clicked => { root.sidebar_collapsed = !root.sidebar_collapsed; } } 
                         }
-                        if (!root.sidebar_collapsed) : VerticalLayout { spacing: 2px; alignment: center;
+                        if (!root.sidebar_collapsed) : VerticalLayout { spacing: 2px;
+                            alignment: center;
                             Text { text: "IRONVAULT"; font-size: 18px; font-weight: 900; color: Theme.text-primary; letter-spacing: 2px; }
                             Text { text: "SECURE ENCLAVE NODE"; font-size: 9px; color: Theme.brand-primary; font-weight: 800; letter-spacing: 0.5px; } }
                     }
                     Rectangle { height: 1px; background: Theme.border-dark; opacity: 0.5; } Rectangle { height: 8px; }
-                    NavItem { text: "Command Dashboard"; icon_image: @image-url("assets/layout-dashboard.svg"); active: root.active_tab == "overview"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "overview"; } }
+                    NavItem { text: "Command Dashboard"; icon_image: @image-url("assets/layout-dashboard.svg"); active: root.active_tab == "overview"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "overview"; root.trigger_log_stream_reload(); } }
                     NavItem { text: "Operations Matrix"; icon_image: @image-url("assets/database.svg"); active: root.active_tab == "operations"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "operations"; root.op_status_msg = ""; } }
                     if (root.current_user_role == "SuperAdmin") : NavItem { text: "Access Requests"; icon_image: @image-url("assets/bell.svg"); active: root.active_tab == "approvals"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "approvals"; root.load_pending_users_list(); } }
                     if (root.current_user_role == "SuperAdmin") : NavItem { text: "Operator Control"; icon_image: @image-url("assets/users.svg"); active: root.active_tab == "users"; collapsed: root.sidebar_collapsed; clicked => { root.active_tab = "users"; root.load_users_list(); } }
@@ -284,7 +297,7 @@ export component AppWindow inherits Window {
                                         TouchArea { clicked => { Theme.is-light-mode = !Theme.is-light-mode; } }
                                     }
                                 }
-                                Rectangle { width: 1px; background: Theme.border-color; height: 30px; y: 20px; }
+                               Rectangle { width: 1px; background: Theme.border-color; height: 30px; y: 20px; }
                                 HorizontalLayout {
                                     spacing: 12px; alignment: center;
                                     VerticalLayout {
@@ -304,14 +317,14 @@ export component AppWindow inherits Window {
                                     }
                                 }
                             }
-                        }
+                     }
                     }
 
                     VerticalLayout {
                         padding-left: 40px; padding-right: 40px; padding-top: 40px; padding-bottom: 20px; vertical-stretch: 1;
 
                         if (root.active_tab == "overview") : VerticalLayout {
-                            spacing: 20px;
+                            spacing: 20px; vertical-stretch: 1;
                             Rectangle {
                                 background: Theme.bg-card; border-radius: 12px; border-width: 1px; border-color: Theme.border-color; drop-shadow-blur: 15px; drop-shadow-color: #0000004D; height: 140px;
                                 HorizontalLayout {
@@ -324,7 +337,59 @@ export component AppWindow inherits Window {
                                     VerticalLayout { alignment: center; spacing: 6px; width: 340px; Text { text: "AUTHORIZED SCHEMAS"; font-size: 10px; font-weight: 800; color: Theme.text-muted; } Text { text: root.current_user_schemas_string; font-size: 13px; font-weight: 700; color: Theme.brand-primary; wrap: word-wrap; } }
                                 }
                             }
-                            Rectangle { vertical-stretch: 1; }
+                            
+                            VerticalLayout {
+                                spacing: 10px; vertical-stretch: 1;
+                                HorizontalLayout {
+                                    alignment: space-between;
+                                    Text { text: "🛡️ REAL-TIME SECURE NODE SYSTEM AUDIT TRACKER"; font-size: 12px; font-weight: 900; color: Theme.text-muted; letter-spacing: 0.5px; }
+                                    Rectangle {
+                                        width: 80px; height: 22px; background: #00E5FF1C; border-radius: 4px;
+                                        Text { text: "🔄 Refresh"; font-size: 10px; font-weight: 800; color: Theme.brand-primary; horizontal-alignment: center; vertical-alignment: center; }
+                                        TouchArea { clicked => { root.trigger_log_stream_reload(); } }
+                                    }
+                                }
+                                
+                                Rectangle {
+                                    background: Theme.bg-sidebar; border-radius: 12px; border-width: 1px; border-color: Theme.border-color; vertical-stretch: 1;
+                                    VerticalLayout {
+                                        padding: 16px;
+                                        HorizontalLayout {
+                                            padding-bottom: 8px;
+                                            Text { text: "TIMESTAMP CLOCK"; width: 190px; font-size: 11px; font-weight: 900; color: Theme.brand-primary; }
+                                            Text { text: "OPERATOR_ID"; width: 110px; font-size: 11px; font-weight: 900; color: Theme.brand-primary; }
+                                            Text { text: "COMPLIED INTERCEPTED SYSTEM EVENT ACTION ACTION"; horizontal-stretch: 1; font-size: 11px; font-weight: 900; color: Theme.brand-primary; }
+                                            Text { text: "SEVERITY CLASS"; width: 110px; font-size: 11px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; }
+                                        }
+                                        Rectangle { height: 1px; background: Theme.border-color; opacity: 0.3; }
+                                        
+                                        ScrollView {
+                                            VerticalLayout {
+                                                spacing: 6px; padding-top: 6px;
+                                                if (root.dashboard_audit_stream.length == 0) : Text { text: "No localized log transactions parsed inside memory."; font-italic: true; color: Theme.text-muted; font-size: 13px; padding: 10px; }
+                                                for log_row in root.dashboard_audit_stream : Rectangle {
+                                                    height: 38px; background: #FFFFFF02; border-radius: 6px;
+                                                    HorizontalLayout {
+                                                        padding-left: 10px; padding-right: 10px; alignment: center;
+                                                        Text { text: log_row.timestamp; width: 190px; font-size: 12px; font-family: "monospace"; color: Theme.text-secondary; vertical-alignment: center; }
+                                                        Text { text: "@" + log_row.operator_id; width: 110px; font-size: 12px; font-weight: 700; color: Theme.brand-warning; vertical-alignment: center; }
+                                                        Text { text: log_row.operation_action; horizontal-stretch: 1; font-size: 12px; font-weight: 600; color: Theme.text-primary; vertical-alignment: center; overflow: elide; }
+                                                        VerticalLayout {
+                                                            alignment: center; width: 110px;
+                                                            Rectangle {
+                                                                width: 90px; height: 20px; border-radius: 4px;
+                                                                background: log_row.level == "CRITICAL" ? #FF33661A : #00E5FF1A;
+                                                                border-width: 1px; border-color: log_row.level == "CRITICAL" ? Theme.brand-danger : Theme.brand-primary;
+                                                                Text { text: log_row.level; font-size: 10px; font-weight: 900; color: parent.border-color; horizontal-alignment: center; vertical-alignment: center; }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         if (root.active_tab == "operations") : VerticalLayout {
@@ -377,12 +442,7 @@ export component AppWindow inherits Window {
 
                                     if (root.op_target_schema == "gpffp" && root.schema_access.gpffp) : GpfFinalPaymentView {
                                         active_schema_action <=> root.active_schema_action; op_status_msg <=> root.op_status_msg; op_is_error <=> root.op_is_error; op_regd_no <=> root.op_regd_no; op_series_id <=> root.op_series_id; op_account_no <=> root.op_account_no; op_gpf_new_status <=> root.op_gpf_new_status; gpf_case_found <=> root.gpf_case_found; active_gpf_case <=> root.active_gpf_case;
-                                        request_find_gpf_case(s) => { root.request_find_gpf_case(s); } 
-                                        request_delete_full_case(r, s, a) => { root.request_delete_full_case(r, s, a); } 
-                                        request_delete_application(r) => { root.request_delete_application(r); } 
-                                        request_delete_precalc(r) => { root.request_delete_precalc(r); } 
-                                        request_update_gpf_status(r, s) => { root.request_update_gpf_status(r, s); }
-                                        request_delete_auth_reports(r) => { root.request_delete_auth_reports(r); } 
+                                        request_find_gpf_case(s) => { root.request_find_gpf_case(s); } request_delete_full_case(r, s, a) => { root.request_delete_full_case(r, s, a); } request_delete_application(r) => { root.request_delete_application(r); } request_delete_precalc(r) => { root.request_delete_precalc(r); } request_update_gpf_status(r, s) => { root.request_update_gpf_status(r, s); } request_delete_auth_reports(r) => { root.request_delete_auth_reports(r); }
                                     }
                                     if (root.op_target_schema == "vlcs" && root.schema_access.vlcs) : VlcsComputerizedView {
                                         active_schema_action <=> root.active_schema_action; op_status_msg <=> root.op_status_msg; op_is_error <=> root.op_is_error; vlcs_ddo_code <=> root.vlcs_ddo_code; vlcs_emp_code <=> root.vlcs_emp_code; vlcs_emp_mobile <=> root.vlcs_emp_mobile;
@@ -417,14 +477,8 @@ export component AppWindow inherits Window {
                                                     VerticalLayout { spacing: 4px; Text { text: "OPERATOR IDENTIFICATION INDEX"; font-size: 10px; color: Theme.text-muted; } Text { text: "@" + p_user.username + " (" + p_user.full_name + ")"; font-size: 16px; font-weight: 900; color: Theme.brand-primary; } }
                                                     HorizontalLayout {
                                                         spacing: 12px; alignment: LayoutAlignment.center;
-                                                        Button { 
-                                                            icon: @image-url("assets/check-badge.svg");
-                                                            clicked => { root.approve_pending_operator(p_user.username, "Operator"); } 
-                                                        }
-                                                        Button { 
-                                                            icon: @image-url("assets/allowances-no-talking.svg");
-                                                            clicked => { root.deny_pending_operator(p_user.username); } 
-                                                        }
+                                                        Button { icon: @image-url("assets/check-badge.svg"); clicked => { root.approve_pending_operator(p_user.username, "Operator"); } }
+                                                        Button { icon: @image-url("assets/allowances-no-talking.svg"); clicked => { root.deny_pending_operator(p_user.username); } }
                                                     }
                                                 }
                                             }
@@ -509,13 +563,12 @@ export component AppWindow inherits Window {
                                                                         root.request_checkbox_states_fetch(user.username);
                                                                     }
                                                                 }
-                                                            }
+                                                        }
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
+                                }
                                 }
 
                                 VerticalLayout {
@@ -533,6 +586,7 @@ export component AppWindow inherits Window {
                                                         Text { text: "🔒 SECURITY OVERRIDE PANEL LOCKED"; font-size: 13px; font-weight: 900; color: Theme.brand-warning; horizontal-alignment: TextHorizontalAlignment.center; }
                                                         Text { text: "Select an operator item from the active database ledger on the left to edit network clearance levels, re-route sections, trigger credential resets, or issue revocations."; font-size: 12px; color: Theme.text-muted; horizontal-alignment: TextHorizontalAlignment.center; wrap: word-wrap; }
                                                     }
+                                        
                                                     if (root.lease_target_user != "") : VerticalLayout {
                                                         spacing: 16px;
                                                         HorizontalLayout {
@@ -639,7 +693,9 @@ export component AppWindow inherits Window {
 
             Rectangle {
                 width: 460px; height: 380px;
+
                 x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+
                 background: Theme.bg-card; border-radius: 16px; border-width: 2px; border-color: Theme.brand-warning; drop-shadow-blur: 24px; drop-shadow-color: #FFB80040;
                 VerticalLayout {
                     width: parent.width; height: parent.height; padding: 32px; spacing: 18px;
@@ -659,26 +715,27 @@ export component AppWindow inherits Window {
                             Text { text: "NEW MASTER PASSWORD"; font-size: 10px; font-weight: 800; color: Theme.text-muted; }
                             LineEdit { text <=> root.form_new_pass; input-type: password; height: Theme.input-height; placeholder_text: "Enter high-entropy sequence"; }
                         }
-                        VerticalLayout {
-                            spacing: 4px;
-                            Text { text: "CONFIRM MASTER PASSWORD"; font-size: 10px; font-weight: 800; color: Theme.text-muted; }
-                            LineEdit { text <=> root.form_confirm_pass; input-type: password; height: Theme.input-height; placeholder_text: "Repeat sequence exactly"; }
-                        }
+
+                    VerticalLayout {
+                        spacing: 4px;
+                        Text { text: "CONFIRM MASTER PASSWORD"; font-size: 10px; font-weight: 800; color: Theme.text-muted; }
+                        LineEdit { text <=> root.form_confirm_pass; input-type: password; height: Theme.input-height; placeholder_text: "Repeat sequence exactly"; }
                     }
+                }
 
-                    if (root.password_reset_error != "") : Text { text: root.password_reset_error; color: Theme.brand-danger; font-size: 12px; font-weight: 800; horizontal-alignment: TextHorizontalAlignment.center; }
+                if (root.password_reset_error != "") : Text { text: root.password_reset_error; color: Theme.brand-danger; font-size: 12px; font-weight: 800; horizontal-alignment: TextHorizontalAlignment.center; }
 
-                    Button {
-                        text: "🔒 Authorize and Update Enclave Key"; height: 42px;
-                        clicked => {
-                            if (root.form_new_pass == "") { root.password_reset_error = "Error: Input cannot be empty."; }
-                            else if (root.form_new_pass != root.form_confirm_pass) { root.password_reset_error = "Error: Password confirmation mismatch."; }
-                            else { root.commit_forced_password_update(root.current_user_name, root.form_new_pass); }
-                        }
+                Button {
+                    text: "🔒 Authorize and Update Enclave Key"; height: 42px;
+                    clicked => {
+                        if (root.form_new_pass == "") { root.password_reset_error = "Error: Input cannot be empty."; }
+                        else if (root.form_new_pass != root.form_confirm_pass) { root.password_reset_error = "Error: Password confirmation mismatch."; }
+                        else { root.commit_forced_password_update(root.current_user_name, root.form_new_pass); }
                     }
                 }
             }
         }
+    }
 
         if (root.show_welcome_popup) : Rectangle {
             background: #000000B3;
