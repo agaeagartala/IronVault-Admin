@@ -203,7 +203,8 @@ export component AppWindow inherits Window {
     callback request_delete_full_case(string, string, string); callback request_delete_application(string); callback request_delete_precalc(string); callback request_update_gpf_status(string, string);
     callback request_delete_auth_reports(string);
     callback request_vlcs_get_ddo(string); callback request_vlcs_update_ddo(string); callback request_vlcs_get_emp(string); callback request_vlcs_update_emp(string, string);
-    callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback property_changed_schemas(string); callback request_find_outward_dak(string); callback request_update_outward_dak(); callback request_submit_correspondence();
+    callback request_find_pension_dak_meta(string); callback request_submit_outward_dak(); callback property_changed_schemas(string); callback request_find_outward_dak(string);
+    callback request_update_outward_dak(); callback request_submit_correspondence();
     callback request_pension_details(string); callback request_pension_status(string);
     
     callback reset_user_password(string);
@@ -317,7 +318,7 @@ export component AppWindow inherits Window {
                                     }
                                 }
                             }
-                        }
+                     }
                     }
 
                     VerticalLayout {
@@ -366,7 +367,19 @@ export component AppWindow inherits Window {
                                         ScrollView {
                                             VerticalLayout {
                                                 spacing: 6px; padding-top: 6px;
-                                                if (root.dashboard_audit_stream.length == 0) : Text { text: "No localized log transactions parsed inside memory."; font-italic: true; color: Theme.text-muted; font-size: 13px; padding: 10px; }
+                                                if (root.dashboard_audit_stream.length == 0) : Rectangle {
+                                                    height: 40px;
+                                                    background: transparent;
+
+                                                    Text {
+                                                        x: 10px;
+                                                        y: 10px;
+                                                        text: "No localized log transactions parsed inside memory.";
+                                                        font-italic: true;
+                                                        color: Theme.text-muted;
+                                                        font-size: 13px;
+                                                    }
+                                                }
                                                 for log_row in root.dashboard_audit_stream : Rectangle {
                                                     height: 38px; background: #FFFFFF02; border-radius: 6px;
                                                     HorizontalLayout {
@@ -563,14 +576,14 @@ export component AppWindow inherits Window {
                                                                         root.request_checkbox_states_fetch(user.username);
                                                                     }
                                                                 }
-                                                            } // End Button wrapper
-                                                        } // End for loop item HorizontalLayout
-                                                    } // End for loop item Rectangle
-                                                } // End ScrollView VerticalLayout
-                                            } // End ScrollView
-                                        } // End Rectangle VerticalLayout
-                                    } // End Rectangle
-                                } // End Ledger VerticalLayout
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } // CLOSED THE SECURE OPERATOR SUITE LEDGER COLUMN SAFELY HERE
 
                                 VerticalLayout {
                                     horizontal-stretch: 1; spacing: 12px;
@@ -666,9 +679,9 @@ export component AppWindow inherits Window {
                                             }
                                         }
                                     }
-                                } // End Overrides VerticalLayout
-                            } // End Split View HorizontalLayout
-                        } // End users tab VerticalLayout
+                                }
+                            }
+                        }
 
                         if (root.op_status_msg != "") : Rectangle {
                             height: 54px;
@@ -683,9 +696,9 @@ export component AppWindow inherits Window {
                                 }
                             }
                         }
-                    } // End content wrapper VerticalLayout
-                } // End Main Workspace Rectangle
-            } // End Root HorizontalLayout
+                    }
+                }
+            }
 
             if (root.forced_password_reset_state) : Rectangle {
                 background: #05070BD9;
@@ -693,9 +706,7 @@ export component AppWindow inherits Window {
 
                 Rectangle {
                     width: 460px; height: 380px;
-
                     x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
-
                     background: Theme.bg-card; border-radius: 16px; border-width: 2px; border-color: Theme.brand-warning; drop-shadow-blur: 24px; drop-shadow-color: #FFB80040;
                     VerticalLayout {
                         width: parent.width; height: parent.height; padding: 32px; spacing: 18px;
@@ -735,7 +746,7 @@ export component AppWindow inherits Window {
                         }
                     }
                 }
-            } // End forced_password_reset_state Rectangle
+            }
 
             if (root.show_welcome_popup) : Rectangle {
                 background: #000000B3;
@@ -753,6 +764,7 @@ export component AppWindow inherits Window {
                         Button { text: "Enter Command Console Node"; height: 40px; clicked => { root.show_welcome_popup = false; } }
                     }
                 }
-            } // End show_welcome_popup Rectangle
-        } // End Root Rectangle
-    } // End AppWindow Component
+            }
+        }
+    }
+}
