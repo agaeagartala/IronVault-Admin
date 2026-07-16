@@ -7,11 +7,12 @@ members = [
 resolver = "2"
 
 [profile.release]
-opt-level = 3       # Tells the compiler to aggressively optimize for speed and code blending
-lto = "fat"         # Heavy Link-Time Optimization; blends functions across crate boundaries
-codegen-units = 1   # Forces single-threaded compilation to allow max cross-functional optimization
-panic = "abort"     # Strips structural landing pads and stack unwind tables (no descriptive panic text)
-strip = true        # Completely removes all symbols, debug information, and function names
+opt-level = 3       # Aggressively optimize for speed and code blending
+lto = "fat"         # Correct string setting for Link-Time Optimization across crates
+codegen-units = 1   # Force single-threaded compilation for maximum cross-functional optimization
+panic = "abort"     # Strip landing pads and stack unwind tables
+debug = true        # MUST BE TRUE: Keeps function symbol maps available for VMProtect and Themida SDK scanners
+strip = false       # MUST BE FALSE: Preventing stripping allows protectors to find SDK entry gates
 
 [profile.dev]
 opt-level = 0

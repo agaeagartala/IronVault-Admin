@@ -9,7 +9,6 @@ use windows_sys::Win32::System::Diagnostics::Debug::{
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Threading::GetCurrentProcess;
 
-use std::arch::asm;
 use std::time::Duration;
 
 // Idiomatic CPUID intrinsics to safely bypass LLVM rbx/ebx register constraints
@@ -18,14 +17,22 @@ use std::arch::x86::__cpuid;
 #[cfg(target_arch = "x86_64")]
 use std::arch::x86_64::__cpuid;
 
+// FFI Link definitions for VMProtect Core Functions
+#[link(name = "VMProtectSDK64")]
+extern "C" {
+    fn VMProtectBeginUltra(marker: *const std::ffi::c_char);
+    fn VMProtectBeginMutation(marker: *const std::ffi::c_char);
+    fn VMProtectEnd();
+    fn VMProtectIsDebuggerPresent(check_kernel: bool) -> bool;
+    fn VMProtectIsVirtualMachinePresent() -> bool;
+}
+
 /// Executes critical system checks wrapped in native VMProtect virtualization markers.
 /// Spawns a background worker loop thread to continuously check system integrity states.
 pub fn enforce_core_security_checks(current_hwid: &str) {
     unsafe {
-        asm!(
-            ".byte 0xEB, 0x08, 0x56, 0x4D, 0x50, 0x42, 0x45, 0x47, 0x49, 0x4E",
-            options(nostack, preserves_flags, readonly)
-        );
+        let name = std::ffi::CString::new("CoreEnforceChecks").unwrap();
+        VMProtectBeginUltra(name.as_ptr());
     }
 
     std::hint::black_box(current_hwid);
@@ -46,10 +53,7 @@ pub fn enforce_core_security_checks(current_hwid: &str) {
     println!("[SECURITY Engine] All runtime environment integrity tokens verified and active monitor engaged.");
 
     unsafe {
-        asm!(
-            ".byte 0xEB, 0x08, 0x56, 0x4D, 0x50, 0x45, 0x4E, 0x44, 0x4F, 0x46",
-            options(nostack, preserves_flags, readonly)
-        );
+        VMProtectEnd();
     }
 }
 
@@ -62,6 +66,19 @@ impl SecurityValidator {
 
     /// Multi-layered baseline check to intercept basic local and remote debuggers
     pub fn enforce_anti_debug() {
+        unsafe {
+            let marker = std::ffi::CString::new("AntiDebugCheck").unwrap();
+            VMProtectBeginMutation(marker.as_ptr());
+        }
+
+        // Tier 1 SDK Engine Check
+        unsafe {
+            if VMProtectIsDebuggerPresent(true) {
+                eprintln!("[SECURITY_FAULT] Hardware debugger intercepted via ring-0 virtualization hook.");
+                std::process::exit(1);
+            }
+        }
+
         #[cfg(target_os = "windows")]
         unsafe {
             // Level 1 Check: Basic Process Environment Block flag review
@@ -84,10 +101,26 @@ impl SecurityValidator {
                 std::process::exit(1);
             }
         }
+
+        unsafe {
+            VMProtectEnd();
+        }
     }
 
     /// Hardened hardware-level hypervisor validation using intrinsic x86/x64 CPUID registers
     pub fn enforce_vm_detection() {
+        unsafe {
+            let marker = std::ffi::CString::new("VmDetectionCheck").unwrap();
+            VMProtectBeginMutation(marker.as_ptr());
+        }
+
+        unsafe {
+            if VMProtectIsVirtualMachinePresent() {
+                eprintln!("[SECURITY_FAULT] Dynamic virtualization runtime container identified.");
+                std::process::exit(1);
+            }
+        }
+
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
             let leaf_1 = __cpuid(1);
@@ -109,6 +142,10 @@ impl SecurityValidator {
                 );
                 std::process::exit(1);
             }
+        }
+
+        unsafe {
+            VMProtectEnd();
         }
     }
 }

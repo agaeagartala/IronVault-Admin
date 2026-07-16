@@ -13,6 +13,13 @@ use rand::distributions::Alphanumeric;
 use rand::Rng;
 use sqlx::Row; 
 
+// FFI Link definitions for Oreans Themida SecureEngine SDK
+#[link(name = "SecureEngineSDK64")]
+extern "C" {
+    fn VMStart();
+    fn VMEnd();
+}
+
 #[tokio::main]
 async fn main() -> Result<(), slint::PlatformError> {
     println!("[BOOT] Engaging IronVault Core Security...");
@@ -60,6 +67,8 @@ async fn main() -> Result<(), slint::PlatformError> {
         let plain_password = password.to_string().trim().to_string();
         
         tokio::spawn(async move {
+            unsafe { VMStart(); } // Themida API Wrapping Gate Entry
+            
             let pool = db.get_pool().clone();
             
             let ota_query = sqlx::query(
@@ -196,6 +205,8 @@ async fn main() -> Result<(), slint::PlatformError> {
                 },
                 None => slint::invoke_from_event_loop(move || { ui_weak.unwrap().set_login_error("Authentication Failed: Invalid credentials or HWID mismatched.".into()); }).unwrap()
             }
+
+            unsafe { VMEnd(); } // Themida Wrapping Gate Closure
         });
     });
 
@@ -587,50 +598,6 @@ async fn main() -> Result<(), slint::PlatformError> {
                 }
             }).unwrap();
         });
-    });
-
-    let app_weak_pic = app_weak_main.clone();
-    app.on_request_profile_pic_update(move || {
-        let ui = app_weak_pic.unwrap();
-        let username = ui.get_current_user_name().to_string();
-        let file_picker = rfd::FileDialog::new()
-            .set_title("Select Operator Profile Image")
-            .add_filter("Supported Images (*.png, *.jpg, *.jpeg)", &["png", "jpg", "jpeg"])
-            .pick_file();
-        if let Some(path) = file_picker {
-            if let Ok(metadata) = std::fs::metadata(&path) {
-                if metadata.len() > 2 * 1024 * 1024 {
-                    ui.set_op_is_error(true); ui.set_op_status_msg("Security Fault: File size exceeds maximum 2MB limit.".into());
-                    return;
-                }
-            } else { return; }
-            let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            if ext != "png" && ext != "jpg" && ext != "jpeg" {
-                ui.set_op_is_error(true); ui.set_op_status_msg("Security Fault: Forbidden image file extension.".into());
-                return;
-            }
-            let storage_dir = std::path::Path::new("./storage/avatars/");
-            let _ = std::fs::create_dir_all(storage_dir);
-            let target_destination = storage_dir.join(format!("{}.png", username));
-            if std::fs::copy(&path, &target_destination).is_ok() {
-                if let Ok(slint_img) = slint::Image::load_from_path(&target_destination) {
-                    ui.set_current_avatar_image(slint_img); ui.set_current_avatar_loaded(true);
-                    ui.set_op_is_error(false); ui.set_op_status_msg("SUCCESS: Profile picture updated successfully.".into());
-                }
-            }
-        }
-    });
-
-    let app_weak_logout = app_weak_main.clone();
-    app.on_request_logout(move || {
-        if let Some(ui) = app_weak_logout.upgrade() {
-            ui.set_is_logged_in(false); ui.set_current_user_name("GUEST".into()); ui.set_auth_screen_state("landing".into());
-            ui.set_form_user("".into()); ui.set_form_pass("".into()); ui.set_form_captcha_login("".into());
-            let mut fresh_rng = rand::thread_rng();
-            let (new_v1, new_v2) = (fresh_rng.gen_range(5..20), fresh_rng.gen_range(2..10));
-            ui.set_captcha_q_main(format!("{} + {}", new_v1, new_v2).into());
-            ui.set_captcha_a_main((new_v1 + new_v2).to_string().into());
-        }
     });
 
     // =========================================================================

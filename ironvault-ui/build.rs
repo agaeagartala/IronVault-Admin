@@ -8,9 +8,27 @@ fn main() {
     // 1. Tell Cargo when to rerun this script (improves incremental build speeds)
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=ui/main.slint");
-    // Add rerun rules for your Windows resource files so changes trigger a rebuild
     println!("cargo:rerun-if-changed=ironvault.rc");
     println!("cargo:rerun-if-changed=ui/assets/ironvault.ico");
+
+    // Get the absolute base path of the current workspace directory context
+    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
+        .expect("CARGO_MANIFEST_DIR env var is missing; are you running via Cargo?");
+    let base_path = Path::new(&manifest_dir);
+
+    // HARDENED FIX: Resolve a full absolute directory link string for MSVC link.exe
+    let parent_workspace = base_path
+        .parent()
+        .expect("Failed to locate parent workspace directory");
+    let absolute_lib_dir = parent_workspace.join("lib");
+
+    // Pass the fully qualified absolute path directly down to the linker engine
+    println!(
+        "cargo:rustc-link-search=native={}",
+        absolute_lib_dir.display()
+    );
+    println!("cargo:rustc-link-lib=static=VMProtectSDK64");
+    println!("cargo:rustc-link-lib=static=SecureEngineSDK64");
 
     // Register all required Lucide vector mappings (CDN name, local filename)
     let required_icons = vec![
@@ -29,9 +47,6 @@ fn main() {
         ("zap", "zap.svg"),
     ];
 
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR")
-        .expect("CARGO_MANIFEST_DIR env var is missing; are you running via Cargo?");
-    let base_path = Path::new(&manifest_dir);
     let assets_dir = base_path.join("ui/assets");
 
     // Ensure the ui/assets folder exists
