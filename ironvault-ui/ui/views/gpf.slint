@@ -14,7 +14,7 @@ export component GpfFinalPaymentView inherits Rectangle {
     in-out property <string> active_schema_action;
     in-out property <string> op_status_msg;
     in-out property <bool> op_is_error;
-    
+   
     in-out property <string> op_regd_no;
     in-out property <string> op_series_id;
     in-out property <string> op_account_no;
@@ -26,74 +26,262 @@ export component GpfFinalPaymentView inherits Rectangle {
     callback request_delete_full_case(string, string, string);
     callback request_delete_application(string);
     callback request_delete_precalc(string);
-    callback request_update_gpf_status(string, string);
     callback request_delete_auth_reports(string);
+    callback request_update_gpf_status(string, string);
 
     background: transparent;
 
     VerticalLayout {
-        spacing: 24px;
-        padding: 4px;
+        spacing: 20px;
+        padding: 24px;
 
-        // Sub-Navigation Glass Ribbon
+        // =========================================================================
+        // MODERN ACCENT NAVIGATION
+        // =========================================================================
         HorizontalLayout {
             spacing: 12px;
             alignment: start;
-            Button { text: "🔍 Find Case Profile"; height: 34px; clicked => { root.active_schema_action = "gpffp_find"; } }
-            Button { text: "🚨 Destructive Override Matrix"; height: 34px; clicked => { root.active_schema_action = "gpffp_clear"; } }
-        }
 
-        if (root.active_schema_action == "gpffp_find") : VerticalLayout {
-            spacing: 20px;
-            Rectangle {
-                background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color;
-                VerticalLayout {
-                    padding: 24px; spacing: 16px;
-                    Text { text: "CASE PROFILE ACQUISITION"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 0.5px; }
-                    HorizontalLayout {
-                        spacing: 16px; alignment: start;
-                        VerticalLayout { spacing: 6px; width: 300px; Text { text: "REGISTRATION NUMBER *"; font-size: 11px; font-weight: 800; color: Theme.text-muted; } LineEdit { text <=> root.op_regd_no; placeholder_text: "e.g. 45102/FP"; height: 36px; } }
-                        VerticalLayout { alignment: end; Button { text: "Query System Enclave"; height: 36px; clicked => { root.request_find_gpf_case(root.op_regd_no); } } }
-                    }
-                }
+            Button {
+                text: "🔍 Profile Acquisition Core";
+                height: 42px;
+                checked: root.active_schema_action == "gpffp_find";
+                clicked => { root.active_schema_action = "gpffp_find"; }
             }
 
-            if (root.gpf_case_found) : Rectangle {
-                background: #11182766; border-radius: 16px; border-width: 1.5px; border-color: Theme.brand-success;
-                VerticalLayout {
-                    padding: 24px; spacing: 18px;
-                    HorizontalLayout {
-                        alignment: space-between;
-                        Text { text: "Verified Relational Ledger Record matches"; font-size: 15px; font-weight: 800; color: Theme.text-primary; }
-                        Rectangle { width: 10px; height: 10px; border-radius: 5px; background: Theme.brand-success; }
-                    }
-                    Rectangle { height: 1px; background: Theme.border-color; opacity: 0.3; }
-                    HorizontalLayout {
-                        spacing: 32px;
-                        VerticalLayout { spacing: 4px; Text { text: "HOLDER ACCOUNT NAME"; font-size: 11px; color: Theme.text-muted; } Text { text: root.active_gpf_case.holder_name; font-size: 15px; font-weight: 700; color: Theme.text-primary; } }
-                        VerticalLayout { spacing: 4px; Text { text: "SERIES PREFIX"; font-size: 11px; color: Theme.text-muted; } Text { text: root.active_gpf_case.series_id; font-size: 15px; font-family: "Consolas"; color: Theme.brand-warning; } }
-                        VerticalLayout { spacing: 4px; Text { text: "LEDGER ACCOUNT NO"; font-size: 11px; color: Theme.text-muted; } Text { text: root.active_gpf_case.account_no; font-size: 15px; font-family: "Consolas"; } }
-                        VerticalLayout { spacing: 4px; Text { text: "CLOSING BALANCE"; font-size: 11px; color: Theme.text-muted; } Text { text: "₹ " + root.active_gpf_case.balance; font-size: 16px; font-weight: 900; color: Theme.brand-primary; } }
-                    }
-                }
+            Button {
+                text: "🚨 Destructive Override Safehouse";
+                height: 42px;
+                checked: root.active_schema_action == "gpffp_clear";
+                clicked => { root.active_schema_action = "gpffp_clear"; }
             }
         }
 
-        if (root.active_schema_action == "gpffp_clear") : VerticalLayout {
-            spacing: 20px;
-            Rectangle {
-                background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: #EF44444D;
+        // =========================================================================
+        // FIND VIEW
+        // =========================================================================
+        if (root.active_schema_action == "gpffp_find") : Rectangle {
+            background: @linear-gradient(145deg, #1e2937, #0f172a);
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: #6366f155;
+
+            VerticalLayout {
+                padding: 28px;
+                spacing: 20px;
+
+                Text {
+                    text: "GPF RELATIONAL ENCLAVE INQUIRY";
+                    font-size: 15px;
+                    font-weight: 800;
+                    letter-spacing: 1.5px;
+                    color: #a5b4fc;
+                }
+
+                HorizontalLayout {
+                    spacing: 16px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        width: 320px;
+
+                        Text {
+                            text: "REGISTRATION INDEX KEY";
+                            font-size: 11px;
+                            font-weight: 700;
+                            color: #64748b;
+                            letter-spacing: 0.8px;
+                        }
+                        LineEdit {
+                            text <=> root.op_regd_no;
+                            placeholder_text: "Ex: 45102/FP";
+                            height: 48px;
+                            font-size: 15px;
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: end;
+                        width: 160px;
+
+                        Button {
+                            text: "SCAN SECURE RING";
+                            height: 48px;
+                            clicked => { root.request_find_gpf_case(root.op_regd_no); }
+                        }
+                    }
+                }
+
+                // RESULT CARD
+                if (root.gpf_case_found) : Rectangle {
+                    background: #10b98110;
+                    border-radius: 18px;
+                    border-width: 1px;
+                    border-color: #34d39966;
+
+                    VerticalLayout {
+                        padding: 24px;
+                        spacing: 18px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            VerticalLayout {
+                                spacing: 4px;
+                                Text {
+                                    text: "ACTIVE LEDGER MATCH VERIFIED";
+                                    font-size: 15px;
+                                    font-weight: 800;
+                                    color: #34d399;
+                                }
+                                Text {
+                                    text: "Cryptographic session bound successfully";
+                                    font-size: 12px;
+                                    color: #a1a1aa;
+                                }
+                            }
+                            Rectangle {
+                                width: 12px;
+                                height: 12px;
+                                background: #34d399;
+                            }
+                        }
+
+                        Rectangle { height: 1px; background: #334155; opacity: 0.6; }
+
+                        HorizontalLayout {
+                            spacing: 32px;
+                            alignment: start;
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 220px;
+                                Text { text: "ACCOUNT HOLDER"; font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; }
+                                Text { text: root.active_gpf_case.holder_name; font-size: 16px; font-weight: 700; color: #e0f2fe; }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 110px;
+                                Text { text: "SERIES"; font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; }
+                                Text { text: root.active_gpf_case.series_id; font-size: 16px; font-family: "Consolas"; font-weight: 700; color: #fbbf24; }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 150px;
+                                Text { text: "ACCOUNT NO"; font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; }
+                                Text { text: root.active_gpf_case.account_no; font-size: 16px; font-family: "Consolas"; color: #e0e7ff; }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                width: 160px;
+                                Text { text: "CLOSING BALANCE"; font-size: 10px; font-weight: 700; color: #64748b; letter-spacing: 1px; }
+                                Text { text: "₹ " + root.active_gpf_case.balance; font-size: 18px; font-weight: 900; color: #67e8f9; }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // =========================================================================
+        // DESTRUCTIVE VIEW
+        // =========================================================================
+        if (root.active_schema_action == "gpffp_clear") : Rectangle {
+            background: @linear-gradient(90deg, #3f87a6 0%, #ebf8e1 100%); //  Fixed!
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: #f8717166;
+
+            VerticalLayout {
+                padding: 28px;
+                spacing: 24px;
+
                 VerticalLayout {
-                    padding: 24px; spacing: 16px;
-                    Text { text: "CRITICAL REGULATORY DATA PURGE LAYER"; font-size: 13px; font-weight: 900; color: Theme.brand-danger; letter-spacing: 0.5px; }
-                    Text { text: "Warning: Destructive overrides commit immediate non-reversible cascading deletes inside Oracle clusters."; font-size: 12px; color: Theme.text-secondary; }
-                    // FIXED: Removed invalid 'wrap' property to resolve compiler rejection diagnostic
-                    HorizontalLayout {
-                        spacing: 16px;
-                        Button { text: "💥 Drop Full Settlement Case"; clicked => { root.request_delete_full_case(root.op_regd_no, root.op_series_id, root.op_account_no); } }
-                        Button { text: "🗑️ Purge Application Row"; clicked => { root.request_delete_application(root.op_regd_no); } }
-                        Button { text: "📊 Clear Pre-Calculations"; clicked => { root.request_delete_precalc(root.op_regd_no); } }
-                        Button { text: "📜 Drop Authority Reports"; clicked => { root.request_delete_auth_reports(root.op_regd_no); } }
+                    spacing: 6px;
+                    Text {
+                        text: "CRITICAL ADMINISTRATIVE INTERFACE";
+                        font-size: 15px;
+                        font-weight: 800;
+                        color: #fda4af;
+                        letter-spacing: 1.2px;
+                    }
+                    Text {
+                        text: "All actions are irreversible. Confirm targets before execution.";
+                        font-size: 13px;
+                        color: #fda4af88;
+                    }
+                }
+
+                Rectangle { height: 1px; background: #f8717166; }
+
+                HorizontalLayout {
+                    spacing: 16px;
+                    alignment: start;
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        width: 210px;
+                        Text { text: "APPLICATION / REGD NO"; font-size: 11px; font-weight: 700; color: #94a3b8; }
+                        LineEdit {
+                            text <=> root.op_regd_no;
+                            placeholder_text: "Ex: 45102/FP";
+                            height: 46px;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        width: 150px;
+                        Text { text: "SERIES PREFIX"; font-size: 11px; font-weight: 700; color: #94a3b8; }
+                        LineEdit {
+                            text <=> root.op_series_id;
+                            placeholder_text: "Ex: EDN";
+                            height: 46px;
+                        }
+                    }
+
+                    VerticalLayout {
+                        spacing: 6px;
+                        width: 210px;
+                        Text { text: "ACCOUNT NO REFERENCE"; font-size: 11px; font-weight: 700; color: #94a3b8; }
+                        LineEdit {
+                            text <=> root.op_account_no;
+                            placeholder_text: "Ex: 12435";
+                            height: 46px;
+                        }
+                    }
+                }
+
+                Rectangle { height: 1px; background: #f8717166; }
+
+                GridLayout {
+                    spacing: 12px;
+                    Row {
+                        Button {
+                            text: "💥 DROP FULL SETTLEMENT PROFILE";
+                            height: 52px;
+                            clicked => { root.request_delete_full_case(root.op_regd_no, root.op_series_id, root.op_account_no); }
+                        }
+                        Button {
+                            text: "🗑️ PURGE APPLICATION ROW";
+                            height: 52px;
+                            clicked => { root.request_delete_application(root.op_regd_no); }
+                        }
+                    }
+                    Row {
+                        Button {
+                            text: "📊 FLUSH PRE-CALCULATIONS";
+                            height: 52px;
+                            clicked => { root.request_delete_precalc(root.op_regd_no); }
+                        }
+                        Button {
+                            text: "📜 DROP SIGNED CERTIFICATES";
+                            height: 52px;
+                            clicked => { root.request_delete_auth_reports(root.op_regd_no); }
+                        }
                     }
                 }
             }

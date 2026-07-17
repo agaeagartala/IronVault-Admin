@@ -57,119 +57,380 @@ export component PenDakView inherits Rectangle {
     background: transparent;
 
     VerticalLayout {
-        spacing: 20px;
+        spacing: 24px;
+        padding: 24px;
         
-        // Ribbon Navigation
+        // Modern Ribbon Navigation
         HorizontalLayout {
-            spacing: 10px; //wrap: word-wrap;
-            Button { text: "📥 Entry Outward Case"; checked: root.active_schema_action == "pendak_entry"; clicked => { root.active_schema_action = "pendak_entry"; } }
-            Button { text: "🔍 Find Outward Case"; checked: root.active_schema_action == "pendak_find"; clicked => { root.active_schema_action = "pendak_find"; } }
-            Button { text: "📝 Edit/Update Outward"; checked: root.active_schema_action == "pendak_edit"; clicked => { root.active_schema_action = "pendak_edit"; } }
-            Button { text: "🔗 Outward Letter Link"; checked: root.active_schema_action == "pendak_letter"; clicked => { root.active_schema_action = "pendak_letter"; } }
+            spacing: 12px;
+            alignment: start;
+
+            Button {
+                text: "📥 Entry Outward Case";
+                height: 42px;
+                checked: root.active_schema_action == "pendak_entry";
+                clicked => { root.active_schema_action = "pendak_entry"; }
+            }
+            Button {
+                text: "🔍 Find Outward Case";
+                height: 42px;
+                checked: root.active_schema_action == "pendak_find";
+                clicked => { root.active_schema_action = "pendak_find"; }
+            }
+            Button {
+                text: "📝 Edit/Update Outward";
+                height: 42px;
+                checked: root.active_schema_action == "pendak_edit";
+                clicked => { root.active_schema_action = "pendak_edit"; }
+            }
+            Button {
+                text: "🔗 Outward Letter Link";
+                height: 42px;
+                checked: root.active_schema_action == "pendak_letter";
+                clicked => { root.active_schema_action = "pendak_letter"; }
+            }
         }
 
+        // Main Content Card
         Rectangle {
-            background: Theme.bg-card; border-radius: 16px; border-width: 1px; border-color: Theme.border-color; vertical-stretch: 1;
+            background: @linear-gradient(145deg, #1e2937, #0f172a);
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: #6366f155;
+            vertical-stretch: 1;
+
             VerticalLayout {
-                padding: 24px;
-            
+                padding: 28px;
+                spacing: 24px;
+
+                // ==================== ENTRY MODE ====================
                 if (root.active_schema_action == "pendak_entry") : ScrollView {
                     VerticalLayout {
-                        spacing: 16px;
-                        Text { text: "LOG NEW OUTWARD DAK DIARY ENVELOPE RECORD"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; letter-spacing: 0.5px; }
-                        
+                        spacing: 20px;
+
+                        Text {
+                            text: "LOG NEW OUTWARD DAK DIARY ENVELOPE RECORD";
+                            font-size: 15px;
+                            font-weight: 800;
+                            letter-spacing: 1.2px;
+                            color: #a5b4fc;
+                        }
+
                         HorizontalLayout {
                             spacing: 16px;
-                            VerticalLayout { spacing: 6px; width: 240px; Text { text: "APPLICATION NO *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.entry_app_num; placeholder_text: "e.g. 104250"; height: 36px; edited => { root.request_find_pension_dak_meta(root.entry_app_num); } } }
-                            VerticalLayout { spacing: 6px; width: 240px; Text { text: "OUTWARD LETTER NO *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.entry_letter_no; placeholder_text: "e.g. DAK-2026-X"; height: 36px; } }
+                            VerticalLayout {
+                                spacing: 6px; 
+                                width: 280px; 
+                                Text { 
+                                    text: "APPLICATION NO"; 
+                                    font-size: 11px; 
+                                    font-weight: 700; 
+                                    color: #64748b; 
+                                } 
+                                LineEdit { 
+                                    text <=> root.entry_app_num; 
+                                    placeholder_text: "e.g. 104250"; 
+                                    height: 48px; 
+                                    font-size: 15px;
+                                    edited => { root.request_find_pension_dak_meta(root.entry_app_num); } 
+                                } 
+                            }
+                            VerticalLayout {
+                                spacing: 6px; 
+                                width: 280px; 
+                                Text { 
+                                    text: "OUTWARD LETTER NO"; 
+                                    font-size: 11px; 
+                                    font-weight: 700; 
+                                    color: #64748b; 
+                                } 
+                                LineEdit { 
+                                    text <=> root.entry_letter_no; 
+                                    placeholder_text: "e.g. DAK-2026-X"; 
+                                    height: 48px; 
+                                    font-size: 15px;
+                                } 
+                            }
                         }
-                        
-                        // Auto-Fetched Core Pension Authorities Panel Mapping
+
+                        // Auto-fetched authorities panel
                         Rectangle {
-                            background: #1118274D; border-radius: 8px; height: 60px;
+                            background: #11182788;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: #334155;
+                            height: 72px;
+
                             HorizontalLayout {
-                                padding: 12px; spacing: 20px;
-                                VerticalLayout { spacing: 2px; Text { text: "PPO NUMBER"; font-size: 9px; color: Theme.text-muted; } Text { text: root.dak_ppo == "" ? "Awaiting Input..." : root.dak_ppo; font-size: 13px; font-weight: 700; } }
-                                VerticalLayout { spacing: 2px; Text { text: "FPPO NUMBER"; font-size: 9px; color: Theme.text-muted; } Text { text: root.dak_fppo == "" ? "Awaiting Input..." : root.dak_fppo; font-size: 13px; font-weight: 700; } }
-                                VerticalLayout { spacing: 2px; Text { text: "GPO AUTHORITY"; font-size: 9px; color: Theme.text-muted; } Text { text: root.dak_gpo == "" ? "N/A" : root.dak_gpo; font-size: 13px; } }
-                                VerticalLayout { spacing: 2px; Text { text: "CPO AUTHORITY"; font-size: 9px; color: Theme.text-muted; } Text { text: root.dak_cpo == "" ? "N/A" : root.dak_cpo; font-size: 13px; } }
+                                padding: 16px;
+                                spacing: 24px;
+                                VerticalLayout { 
+                                    spacing: 2px; 
+                                    Text { text: "PPO NUMBER"; font-size: 10px; color: #64748b; } 
+                                    Text { 
+                                        text: root.dak_ppo == "" ? "Awaiting Input..." : root.dak_ppo; 
+                                        font-size: 14px; 
+                                        font-weight: 700; 
+                                        color: #67e8f9; 
+                                    } 
+                                }
+                                VerticalLayout { 
+                                    spacing: 2px; 
+                                    Text { text: "FPPO NUMBER"; font-size: 10px; color: #64748b; } 
+                                    Text { 
+                                        text: root.dak_fppo == "" ? "Awaiting Input..." : root.dak_fppo; 
+                                        font-size: 14px; 
+                                        font-weight: 700; 
+                                    } 
+                                }
+                                VerticalLayout { 
+                                    spacing: 2px; 
+                                    Text { text: "GPO AUTHORITY"; font-size: 10px; color: #64748b; } 
+                                    Text { 
+                                        text: root.dak_gpo == "" ? "N/A" : root.dak_gpo; 
+                                        font-size: 14px; 
+                                    } 
+                                }
+                                VerticalLayout { 
+                                    spacing: 2px; 
+                                    Text { text: "CPO AUTHORITY"; font-size: 10px; color: #64748b; } 
+                                    Text { 
+                                        text: root.dak_cpo == "" ? "N/A" : root.dak_cpo; 
+                                        font-size: 14px; 
+                                    } 
+                                }
                             }
                         }
 
                         HorizontalLayout {
                             spacing: 16px;
-                            VerticalLayout { spacing: 6px; width: 240px; Text { text: "ROUTING SECTION MATRIX *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.entry_section; placeholder_text: "e.g. Pension-3"; height: 36px; } }
-                            VerticalLayout { spacing: 6px; horizontal-stretch: 1; Text { text: "COMMUNICATION SUBJECT OVERVIEW *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.entry_subject; placeholder_text: "Summary of files forwarded..."; height: 36px; } }
+                            VerticalLayout {
+                                spacing: 6px; 
+                                width: 280px; 
+                                Text { 
+                                    text: "ROUTING SECTION MATRIX"; 
+                                    font-size: 11px; 
+                                    font-weight: 700; 
+                                    color: #64748b; 
+                                } 
+                                LineEdit { 
+                                    text <=> root.entry_section; 
+                                    placeholder_text: "e.g. Pension-3"; 
+                                    height: 48px; 
+                                    font-size: 15px;
+                                } 
+                            }
+                            VerticalLayout {
+                                spacing: 6px; 
+                                horizontal-stretch: 1; 
+                                Text { 
+                                    text: "COMMUNICATION SUBJECT OVERVIEW"; 
+                                    font-size: 11px; 
+                                    font-weight: 700; 
+                                    color: #64748b; 
+                                } 
+                                LineEdit { 
+                                    text <=> root.entry_subject; 
+                                    placeholder_text: "Summary of files forwarded..."; 
+                                    height: 48px; 
+                                    font-size: 15px;
+                                } 
+                            }
                         }
 
                         HorizontalLayout {
                             spacing: 16px;
-                            VerticalLayout { spacing: 6px; width: 120px; Text { text: "NO OF COPIES"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.entry_no_of_copies; height: 36px; } }
+                            VerticalLayout {
+                                spacing: 6px; 
+                                width: 140px; 
+                                Text { 
+                                    text: "NO OF COPIES"; 
+                                    font-size: 11px; 
+                                    font-weight: 700; 
+                                    color: #64748b; 
+                                } 
+                                LineEdit { 
+                                    text <=> root.entry_no_of_copies; 
+                                    height: 48px; 
+                                    font-size: 15px;
+                                } 
+                            }
                         }
 
-                        // Recipient Rows Framework Layout Block Matrix
-                        Text { text: "RECIPIENT FORENSICS DISPATCH PROFILES"; font-size: 12px; font-weight: 800; color: Theme.brand-warning; }
-                        
+                        // Recipients Section
+                        Text { 
+                            text: "RECIPIENT FORENSICS DISPATCH PROFILES"; 
+                            font-size: 13px; 
+                            font-weight: 800; 
+                            color: #fbbf24; 
+                        }
+
                         VerticalLayout {
-                            spacing: 10px;
+                            spacing: 12px;
+
+                            // Recipient 1
                             Rectangle {
-                                background: #FFFFFF01; border-radius: 8px; border-width: 1px; border-color: Theme.border-color; height: 50px;
+                                background: #1e293744;
+                                border-radius: 12px;
+                                border-width: 1px;
+                                border-color: #334155;
+                                height: 58px;
                                 HorizontalLayout {
-                                    padding-left: 12px; padding-right: 12px; spacing: 16px;
-                                    Text { text: "1"; font-weight: 900; color: Theme.brand-primary; vertical-alignment: center; }
-                                    LineEdit { text <=> root.dak_adr_1; placeholder_text: "Recipient Addressee 1 Destination"; horizontal-stretch: 1; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_bar_1; placeholder_text: "Speed Post Barcode / Tracking Index"; width: 260px; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_sent_1; width: 140px; height: 32px; y: 9px; }
-                                }
-                            }
-                            
-                            if (root.entry_no_of_copies == "2" || root.entry_no_of_copies == "3") : Rectangle {
-                                background: #FFFFFF01; border-radius: 8px; border-width: 1px; border-color: Theme.border-color; height: 50px;
-                                HorizontalLayout {
-                                    padding-left: 12px; padding-right: 12px; spacing: 16px;
-                                    Text { text: "2"; font-weight: 900; color: Theme.brand-primary; vertical-alignment: center; }
-                                    LineEdit { text <=> root.dak_adr_2; placeholder_text: "Recipient Addressee 2 Destination"; horizontal-stretch: 1; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_bar_2; placeholder_text: "Speed Post Barcode / Tracking Index"; width: 260px; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_sent_2; width: 140px; height: 32px; y: 9px; }
+                                    padding-left: 16px; 
+                                    padding-right: 16px; 
+                                    spacing: 12px;
+                                    alignment: center;
+                                    Text { text: "1"; font-weight: 900; color: #6366f1; vertical-alignment: center; }
+                                    LineEdit { 
+                                        text <=> root.dak_adr_1; 
+                                        placeholder_text: "Recipient Addressee 1"; 
+                                        horizontal-stretch: 1; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_bar_1; 
+                                        placeholder_text: "Speed Post Barcode"; 
+                                        width: 240px; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_sent_1; 
+                                        width: 140px; 
+                                        height: 40px; 
+                                    }
                                 }
                             }
 
-                            if (root.entry_no_of_copies == "3") : Rectangle {
-                                background: #FFFFFF01; border-radius: 8px; border-width: 1px; border-color: Theme.border-color; height: 50px;
+                            // Recipient 2 (conditional)
+                            if (root.entry_no_of_copies == "2" || root.entry_no_of_copies == "3") : Rectangle {
+                                background: #1e293744;
+                                border-radius: 12px;
+                                border-width: 1px;
+                                border-color: #334155;
+                                height: 58px;
                                 HorizontalLayout {
-                                    padding-left: 12px; padding-right: 12px; spacing: 16px;
-                                    Text { text: "3"; font-weight: 900; color: Theme.brand-primary; vertical-alignment: center; }
-                                    LineEdit { text <=> root.dak_adr_3; placeholder_text: "Recipient Addressee 3 Destination"; horizontal-stretch: 1; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_bar_3; placeholder_text: "Speed Post Barcode / Tracking Index"; width: 260px; height: 32px; y: 9px; }
-                                    LineEdit { text <=> root.dak_sent_3; width: 140px; height: 32px; y: 9px; }
+                                    padding-left: 16px; 
+                                    padding-right: 16px; 
+                                    spacing: 12px;
+                                    alignment: center;
+                                    Text { text: "2"; font-weight: 900; color: #6366f1; vertical-alignment: center; }
+                                    LineEdit { 
+                                        text <=> root.dak_adr_2; 
+                                        placeholder_text: "Recipient Addressee 2"; 
+                                        horizontal-stretch: 1; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_bar_2; 
+                                        placeholder_text: "Speed Post Barcode"; 
+                                        width: 240px; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_sent_2; 
+                                        width: 140px; 
+                                        height: 40px; 
+                                    }
+                                }
+                            }
+
+                            // Recipient 3 (conditional)
+                            if (root.entry_no_of_copies == "3") : Rectangle {
+                                background: #1e293744;
+                                border-radius: 12px;
+                                border-width: 1px;
+                                border-color: #334155;
+                                height: 58px;
+                                HorizontalLayout {
+                                    padding-left: 16px; 
+                                    padding-right: 16px; 
+                                    spacing: 12px;
+                                    alignment: center;
+                                    Text { text: "3"; font-weight: 900; color: #6366f1; vertical-alignment: center; }
+                                    LineEdit { 
+                                        text <=> root.dak_adr_3; 
+                                        placeholder_text: "Recipient Addressee 3"; 
+                                        horizontal-stretch: 1; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_bar_3; 
+                                        placeholder_text: "Speed Post Barcode"; 
+                                        width: 240px; 
+                                        height: 40px; 
+                                    }
+                                    LineEdit { 
+                                        text <=> root.dak_sent_3; 
+                                        width: 140px; 
+                                        height: 40px; 
+                                    }
                                 }
                             }
                         }
 
-                        Button { text: "Commit Immutably to Diary Ring"; height: 40px; clicked => { root.request_submit_outward_dak(); } }
+                        Button {
+                            text: "COMMIT IMMUTABLY TO DIARY RING";
+                            height: 52px;
+                            clicked => { root.request_submit_outward_dak(); }
+                        }
                     }
                 }
-            
+
+                // ==================== FIND MODE ====================
                 if (root.active_schema_action == "pendak_find") : VerticalLayout {
-                    spacing: 16px;
-                    Text { text: "QUERY METADATA CORRESPONDENCE TRACKER ARCHIVE"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; }
-                    HorizontalLayout {
-                        spacing: 16px; alignment: start;
-                        VerticalLayout { spacing: 4px; width: 340px; LineEdit { text <=> root.find_app_num; placeholder_text: "Enter verification app sequence token..."; height: 36px; } }
-                        VerticalLayout { alignment: end; Button { text: "Locate Transaction"; height: 36px; clicked => { root.request_find_outward_dak(root.find_app_num); } } }
+                    spacing: 20px;
+
+                    Text {
+                        text: "QUERY METADATA CORRESPONDENCE TRACKER ARCHIVE";
+                        font-size: 15px;
+                        font-weight: 800;
+                        letter-spacing: 1.2px;
+                        color: #a5b4fc;
                     }
-                    
+
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: start;
+                        VerticalLayout { 
+                            spacing: 6px; 
+                            width: 380px; 
+                            LineEdit { 
+                                text <=> root.find_app_num; 
+                                placeholder_text: "Enter verification app sequence token..."; 
+                                height: 48px; 
+                                font-size: 15px;
+                            } 
+                        }
+                        VerticalLayout { 
+                            alignment: end; 
+                            Button { 
+                                text: "LOCATE TRANSACTION"; 
+                                height: 48px; 
+                                clicked => { root.request_find_outward_dak(root.find_app_num); } 
+                            } 
+                        }
+                    }
+
                     if (root.dak_case_found) : Rectangle {
-                        background: #11182766; border-radius: 12px; border-width: 1px; border-color: Theme.border-color;
+                        background: #11182788;
+                        border-radius: 16px;
+                        border-width: 1px;
+                        border-color: #334155;
+
                         VerticalLayout {
-                            padding: 20px; // FIXED: Moved padding to Layout element
-                            spacing: 14px;
-                            Text { text: "Matched Enclave Case Entry Records"; font-size: 14px; font-weight: 800; color: Theme.brand-warning; }
-                            
-                            // FIXED: Correct layout tag designation
+                            padding: 24px;
+                            spacing: 18px;
+
+                            Text { 
+                                text: "MATCHED ENCLAVE CASE ENTRY RECORDS"; 
+                                font-size: 14px; 
+                                font-weight: 800; 
+                                color: #fbbf24; 
+                            }
+
                             GridLayout {
-                                spacing: 12px;
-                                Row { Text { text: "Letter Reference Number:"; color: Theme.text-muted; } Text { text: root.view_dak_letter; font-weight: 700; color: Theme.text-primary; } }
+                                spacing: 16px;
+                                Row { Text { text: "Letter Reference Number:"; color: Theme.text-muted; } Text { text: root.view_dak_letter; font-weight: 700; color: #e0f2fe; } }
                                 Row { Text { text: "Handling Department Section:"; color: Theme.text-muted; } Text { text: root.view_dak_section; font-family: "Consolas"; } }
                                 Row { Text { text: "Correspondence Logging Date:"; color: Theme.text-muted; } Text { text: root.dak_corr_date; } }
                                 Row { Text { text: "Communication Subject Matter:"; color: Theme.text-muted; } Text { text: root.view_dak_subject; wrap: word-wrap; } }
@@ -178,34 +439,96 @@ export component PenDakView inherits Rectangle {
                     }
                 }
 
+                // ==================== EDIT MODE ====================
                 if (root.active_schema_action == "pendak_edit") : VerticalLayout {
-                    spacing: 16px;
-                    Text { text: "AMEND EXISTENT OUTWARD DATA COEFFICIENTS"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; }
+                    spacing: 20px;
+
+                    Text {
+                        text: "AMEND EXISTENT OUTWARD DATA COEFFICIENTS";
+                        font-size: 15px;
+                        font-weight: 800;
+                        letter-spacing: 1.2px;
+                        color: #a5b4fc;
+                    }
+
                     HorizontalLayout {
                         spacing: 16px;
-                        VerticalLayout { spacing: 6px; width: 220px; Text { text: "TARGET APP NO *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.edit_app_num; height: 36px; } }
-                        VerticalLayout { spacing: 6px; width: 220px; Text { text: "RE-ROUTE NEW SECTION *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.edit_section; height: 36px; } }
-                        VerticalLayout { spacing: 6px; horizontal-stretch: 1; Text { text: "REVISED SUBJECT MATTER *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.edit_subject; height: 36px; } }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            width: 240px; 
+                            Text { text: "TARGET APP NO"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.edit_app_num; height: 48px; font-size: 15px; } 
+                        }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            width: 240px; 
+                            Text { text: "RE-ROUTE NEW SECTION"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.edit_section; height: 48px; font-size: 15px; } 
+                        }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            horizontal-stretch: 1; 
+                            Text { text: "REVISED SUBJECT MATTER"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.edit_subject; height: 48px; font-size: 15px; } 
+                        }
                     }
-                    Rectangle { height: 8px; }
-                    Button { text: "Apply Amends Pass Over Target Record"; height: 38px; clicked => { root.request_update_outward_dak(); } }
+
+                    Button {
+                        text: "APPLY AMENDS PASS OVER TARGET RECORD";
+                        height: 52px;
+                        clicked => { root.request_update_outward_dak(); }
+                    }
                 }
 
+                // ==================== LETTER LINK MODE ====================
                 if (root.active_schema_action == "pendak_letter") : VerticalLayout {
-                    spacing: 16px;
-                    Text { text: "LINK INTER-DEPARTMENTAL REPLIES & CORRESPONDENCE"; font-size: 13px; font-weight: 900; color: Theme.brand-primary; }
+                    spacing: 20px;
+
+                    Text {
+                        text: "LINK INTER-DEPARTMENTAL REPLIES & CORRESPONDENCE";
+                        font-size: 15px;
+                        font-weight: 800;
+                        letter-spacing: 1.2px;
+                        color: #a5b4fc;
+                    }
+
                     HorizontalLayout {
                         spacing: 16px;
-                        VerticalLayout { spacing: 6px; width: 220px; Text { text: "PARENT APP NO *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.letter_app_num; height: 36px; } }
-                        VerticalLayout { spacing: 6px; width: 220px; Text { text: "INCOMING LETTER REFERENCE *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.letter_letter_no; height: 36px; } }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            width: 260px; 
+                            Text { text: "PARENT APP NO"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.letter_app_num; height: 48px; font-size: 15px; } 
+                        }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            width: 260px; 
+                            Text { text: "INCOMING LETTER REFERENCE"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.letter_letter_no; height: 48px; font-size: 15px; } 
+                        }
                     }
+
                     HorizontalLayout {
                         spacing: 16px;
-                        VerticalLayout { spacing: 6px; width: 220px; Text { text: "HANDLING SECTION *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.letter_section; height: 36px; } }
-                        VerticalLayout { spacing: 6px; horizontal-stretch: 1; Text { text: "SUBJECT REMARKS *"; font-size: 11px; color: Theme.text-muted; } LineEdit { text <=> root.letter_subject; height: 36px; } }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            width: 260px; 
+                            Text { text: "HANDLING SECTION"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.letter_section; height: 48px; font-size: 15px; } 
+                        }
+                        VerticalLayout {
+                            spacing: 6px; 
+                            horizontal-stretch: 1; 
+                            Text { text: "SUBJECT REMARKS"; font-size: 11px; font-weight: 700; color: #64748b; } 
+                            LineEdit { text <=> root.letter_subject; height: 48px; font-size: 15px; } 
+                        }
                     }
-                    Rectangle { height: 8px; }
-                    Button { text: "Link Correspondence Document Component"; height: 38px; clicked => { root.request_submit_correspondence(); } }
+
+                    Button {
+                        text: "LINK CORRESPONDENCE DOCUMENT COMPONENT";
+                        height: 52px;
+                        clicked => { root.request_submit_correspondence(); }
+                    }
                 }
             }
         }
