@@ -120,11 +120,15 @@ impl DbClient {
         let secure_hashed_pass = ironvault_core::crypto::hash_password(password_plain)
             .map_err(|_| "Registration record reject: password hashing failed".to_string())?;
 
-        // FIXED: Removed ON CONFLICT DO NOTHING so that duplicate registrations
-        // return an explicit database error code down to the user interface.
+        // FIXED (item #9): expires_at is no longer set at registration time.
+        // A PENDING account has no active lease yet — the 30-day window should
+        // only begin once a SuperAdmin actually approves it (see approve_user),
+        // not while the request is still sitting unreviewed. Leaving this NULL
+        // for PENDING rows also means any future "expiry" queries/dashboards
+        // can't misread a pending request as having an active, ticking lease.
         sqlx::query(
             "INSERT INTO ironvault.users (username, password, role, status, hardware_fingerprint, first_name, middle_name, last_name, full_name, designation, section, expires_at) \
-             VALUES ($1, $2, 'Operator', 'PENDING', $3, $4, $5, $6, $7, $8, $9, NOW() + INTERVAL '30 days')"
+             VALUES ($1, $2, 'Operator', 'PENDING', $3, $4, $5, $6, $7, $8, $9, NULL) ON CONFLICT DO NOTHING"
         )
         .bind(username)
         .bind(&secure_hashed_pass)
@@ -137,7 +141,7 @@ impl DbClient {
         .bind(section)
         .execute(&self.pool)
         .await
-        .map_err(|e| format!("Registration record reject (Username may already exist): {}", e))?;
+        .map_err(|e| format!("Registration record reject: {}", e))?;
         Ok(())
     }
 
