@@ -52,46 +52,69 @@ impl DbClient {
     pub async fn authenticate_user(
         &self,
         username: &str,
-        password_token: &str,
+        password_plain: &str,
         hwid: &str,
     ) -> Result<DbUser, String> {
-        // SECURED: Hash incoming user login verification credential natively before database comparison mapping
-        let secure_hashed_pass = ironvault_core::crypto::hash_password(password_token, username);
-
-        // FIXED: Column target re-mapped back from secret_token to your native schema keyword 'password'
+        // FIXED: fetch by username/hwid/status/expiry first — bcrypt hashes can't be
+        // compared with `=` in SQL, so the password check now happens in Rust via
+        // crypto::verify_password after the row is retrieved.
+        //
+        // FIXED: the old query's role-vs-expiry OR-clause let any SuperAdmin-cased
+        // row bypass expiry entirely. This now requires expiry to hold for every
+        // role, including SuperAdmin — role no longer grants an expiry bypass.
         let row = sqlx::query(
-            "SELECT username, role, COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login \
+            "SELECT username, password, role, \
+             COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login \
              FROM ironvault.users \
-             WHERE username = $1 AND password = $2 AND status = 'ACTIVE' AND hardware_fingerprint = $3 \
-             AND (role = 'SuperAdmin' OR role = 'super_admin' OR role = 'Super Admin' OR expires_at IS NULL OR expires_at > NOW())"
+             WHERE username = $1 AND hardware_fingerprint = $2 AND status = 'ACTIVE' \
+             AND (expires_at IS NULL OR expires_at > NOW())"
         )
         .bind(username)
-        .bind(&secure_hashed_pass)
         .bind(hwid)
         .fetch_optional(self.get_pool())
         .await
         .map_err(|e| e.to_string())?;
 
-        if let Some(r) = row {
-            sqlx::query("UPDATE ironvault.users SET last_login_at = NOW() WHERE username = $1")
-                .bind(username)
-                .execute(&self.pool)
-                .await
-                .ok();
-            Ok(DbUser {
-                username: r.get("username"),
-                role: r.get("role"),
-                last_login: r.get("last_login"),
-            })
-        } else {
-            Err("Authentication Failed: Invalid token, HWID mismatch, or account subscription has EXPIRED.".to_string())
+        let row = match row {
+            Some(r) => r,
+            None => {
+                return Err(
+                    "Authentication Failed: Invalid token, HWID mismatch, or account subscription has EXPIRED."
+                        .to_string(),
+                )
+            }
+        };
+
+        let stored_hash: String = row.get("password");
+
+        // Constant-behavior verification: bcrypt::verify already runs in roughly
+        // constant time relative to the hash itself, so no separate timing-safe
+        // compare is needed here (unlike the old raw string `=` comparison, which
+        // additionally leaked timing information via SQL/string comparison).
+        if !ironvault_core::crypto::verify_password(password_plain, &stored_hash) {
+            return Err(
+                "Authentication Failed: Invalid token, HWID mismatch, or account subscription has EXPIRED."
+                    .to_string(),
+            );
         }
+
+        sqlx::query("UPDATE ironvault.users SET last_login_at = NOW() WHERE username = $1")
+            .bind(username)
+            .execute(&self.pool)
+            .await
+            .ok();
+
+        Ok(DbUser {
+            username: row.get("username"),
+            role: row.get("role"),
+            last_login: row.get("last_login"),
+        })
     }
 
     pub async fn register_user(
         &self,
         username: &str,
-        secure_hashed_pass: &str,
+        password_plain: &str, // FIXED: now takes the raw secret, hashes internally
         hwid: &str,
         first: &str,
         middle: &str,
@@ -105,13 +128,18 @@ impl DbClient {
             format!("{} {} {}", first.trim(), middle.trim(), last.trim())
         };
 
-        // FIXED: Column target re-mapped back from secret_token to your native schema keyword 'password'
+        // FIXED: bcrypt hashing happens here, at the single point of entry for new
+        // credentials, so no call site can accidentally store a weakly-hashed
+        // (or unhashed) password.
+        let secure_hashed_pass = ironvault_core::crypto::hash_password(password_plain)
+            .map_err(|_| "Registration record reject: password hashing failed".to_string())?;
+
         sqlx::query(
             "INSERT INTO ironvault.users (username, password, role, status, hardware_fingerprint, first_name, middle_name, last_name, full_name, designation, section, expires_at) \
              VALUES ($1, $2, 'Operator', 'PENDING', $3, $4, $5, $6, $7, $8, $9, NOW() + '30 days'::INTERVAL) ON CONFLICT DO NOTHING"
         )
         .bind(username)
-        .bind(secure_hashed_pass)
+        .bind(&secure_hashed_pass)
         .bind(hwid)
         .bind(first)
         .bind(middle)

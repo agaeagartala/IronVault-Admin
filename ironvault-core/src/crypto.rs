@@ -1,13 +1,15 @@
 //! Cryptographic operations for payload encryption and decryption
 //!
-//! Uses AES-256-GCM for authenticated encryption and introduces Time-Bound Envelopes
+//! Uses AES-256-GCM for authenticated encryption and introduces Time-Bound Envelopes.
+//! Password hashing uses bcrypt (adaptive cost, per-hash random salt) rather than
+//! a bare SHA-256 digest, since password material must resist offline brute force.
 
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
     Aes256Gcm, Key, Nonce,
 };
 use chrono::Utc;
-use rand::rngs::OsRng; // HARDENED: Switched to hardware/OS entropy pool
+use rand::rngs::OsRng; // HARDENED: hardware/OS entropy pool
 use rand::RngCore;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -38,7 +40,9 @@ struct SecureEnvelope<T> {
     pub expires_in_secs: Option<i64>,
 }
 
-/// Derives a strict 32-byte AES key from a standard string password and salt
+/// Derives a strict 32-byte AES key from a standard string password and salt.
+/// NOTE: this is for deriving a symmetric *encryption* key (e.g. network transport key),
+/// NOT for hashing user login passwords — see `hash_password` / `verify_password` below.
 pub fn derive_key(password: &str, salt: &str) -> [u8; 32] {
     let mut hasher = Sha256::new();
     hasher.update(password.as_bytes());
@@ -50,13 +54,31 @@ pub fn derive_key(password: &str, salt: &str) -> [u8; 32] {
     key
 }
 
-/// Hashes an operator password with a username-based salt to prevent plaintext database leaks
-pub fn hash_password(password: &str, username: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(password.as_bytes());
-    hasher.update(username.as_bytes());
-    let result = hasher.finalize();
-    format!("{:x}", result)
+/// Bcrypt work factor. 12 is a reasonable default in 2026; raise if login latency
+/// budget allows it and you want more resistance to offline cracking.
+const BCRYPT_COST: u32 = 12;
+
+/// Hashes an operator's login password using bcrypt.
+///
+/// bcrypt generates and embeds its own cryptographically random salt internally,
+/// so no external salt/username needs to be (or should be) supplied here — doing so
+/// would just be redundant and, if done wrong (e.g. using the username as salt, as
+/// the previous implementation did), would weaken rather than strengthen the scheme.
+///
+/// The returned string is a self-describing bcrypt hash (e.g. `$2b$12$...`) which
+/// already encodes the cost factor and salt, so it can be stored directly in the
+/// `password` column and later verified with `verify_password`.
+pub fn hash_password(password: &str) -> Result<String, CryptoError> {
+    bcrypt::hash(password, BCRYPT_COST).map_err(|_| CryptoError::HashingFailed)
+}
+
+/// Verifies a plaintext password attempt against a stored bcrypt hash.
+///
+/// Returns `false` (rather than propagating an error) on any malformed-hash or
+/// internal bcrypt error, since from the caller's perspective that should be
+/// treated identically to "wrong password" — never leak *why* verification failed.
+pub fn verify_password(password: &str, stored_hash: &str) -> bool {
+    bcrypt::verify(password, stored_hash).unwrap_or(false)
 }
 
 impl Encryptor {
@@ -171,4 +193,5 @@ pub enum CryptoError {
     InvalidKeySize,
     SerializationFailed,
     PayloadExpired,
+    HashingFailed, // <-- ADDED
 }

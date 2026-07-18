@@ -3203,7 +3203,9 @@ name = "ironvault-core"
 version = "0.1.0"
 dependencies = [
  "aes-gcm",
+ "bcrypt",
  "chrono",
+ "hex",
  "log",
  "rand 0.8.6",
  "serde",
