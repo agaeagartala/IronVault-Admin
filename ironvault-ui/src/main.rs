@@ -37,16 +37,40 @@ async fn log_to_db(pool: &sqlx::PgPool, operator: &str, action: &str, level: &st
 async fn main() -> Result<(), slint::PlatformError> {
     println!("[BOOT] Engaging IronVault Core Security...");
 
+    // Load .env into the process environment (no-op if the file doesn't exist,
+    // e.g. in a deployment that sets real env vars directly instead).
+    if let Err(e) = dotenvy::dotenv() {
+        log::warn!(
+            "[CONFIG] No .env file loaded ({}). Falling back to process environment / defaults.",
+            e
+        );
+    }
+
     let hwid = ironvault_core::licensing::generate_hwid();
     ironvault_core::security::enforce_core_security_checks(&hwid);
     let audit_logger = Arc::new(AuditLogger::new("ironvault.audit.log"));
 
+    // FIXED: credentials now come from environment variables instead of being
+    // hardcoded in source. Fails fast with a clear message if anything required
+    // is missing, rather than silently falling back to a guessable default.
+    let db_host = std::env::var("IRONVAULT_DB_HOST").unwrap_or_else(|_| "localhost".to_string());
+    let db_port: u16 = std::env::var("IRONVAULT_DB_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(5432);
+    let db_name = std::env::var("IRONVAULT_DB_NAME")
+        .expect("[FATAL CONFIG ERROR] IRONVAULT_DB_NAME must be set (check .env)");
+    let db_user = std::env::var("IRONVAULT_DB_USER")
+        .expect("[FATAL CONFIG ERROR] IRONVAULT_DB_USER must be set (check .env)");
+    let db_password = std::env::var("IRONVAULT_DB_PASSWORD")
+        .expect("[FATAL CONFIG ERROR] IRONVAULT_DB_PASSWORD must be set (check .env)");
+
     let db = match DbClient::connect_with_credentials(
-        "localhost",
-        5432,
-        "AsstPro",
-        "egpf_app_user",
-        "P@ssw()rd123",
+        &db_host,
+        db_port,
+        &db_name,
+        &db_user,
+        &db_password,
     )
     .await
     {
@@ -312,76 +336,130 @@ async fn main() -> Result<(), slint::PlatformError> {
     // =========================================================================
     let app_weak_approve = app_weak_main.clone();
     let db_approve = Arc::clone(&db_clone);
+    let audit_approve = Arc::clone(&audit_clone);
     app.on_approve_pending_operator(move |target_user, role_str| {
         let ui_weak = app_weak_approve.clone();
         let db = Arc::clone(&db_approve);
+        let audit = Arc::clone(&audit_approve);
         let target = target_user.to_string().trim().to_string();
         let assigned_role = role_str.to_string();
+
+        // FIXED: capture both the acting username AND their real role from the UI
+        // state, rather than assuming SuperAdmin. If the UI handle is gone for
+        // some reason, fall back to Viewer (least-privilege) rather than guessing up.
+        let (acting_user, acting_role_str) = if let Some(ui) = ui_weak.upgrade() {
+            (
+                ui.get_current_user_name().to_string(),
+                ui.get_current_user_role().to_string(),
+            )
+        } else {
+            ("UNKNOWN".to_string(), "Viewer".to_string())
+        };
+        let acting_role: ironvault_core::auth::Role = acting_role_str.into();
+
         tokio::spawn(async move {
-            if db
-                .approve_user("ADMIN", &target, &assigned_role)
-                .await
-                .is_ok()
-            {
-                slint::invoke_from_event_loop(move || {
-                    let ui = ui_weak.unwrap();
-                    ui.set_pending_notification_name("NONE".into());
-                    ui.set_op_is_error(false);
-                    ui.set_op_status_msg(
-                        "SUCCESS: Access registration token signed into active matrix.".into(),
-                    );
-                    ui.invoke_load_pending_users_list();
-                })
-                .unwrap();
+            match db.approve_user(&acting_user, &target, &assigned_role).await {
+                Ok(_) => {
+                    let core_user = ironvault_core::auth::User {
+                        id: Default::default(),
+                        username: acting_user.clone(),
+                        role: acting_role,
+                        last_login: "".to_string(),
+                    };
+                    audit
+                        .log_action(
+                            &core_user,
+                            &format!(
+                                "APPROVED_OPERATOR target=@{} assigned_role={}",
+                                target, assigned_role
+                            ),
+                            "CRITICAL",
+                        )
+                        .ok();
+
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_pending_notification_name("NONE".into());
+                            ui.set_op_is_error(false);
+                            ui.set_op_status_msg(
+                                "SUCCESS: Access registration token signed into active matrix."
+                                    .into(),
+                            );
+                            ui.invoke_load_pending_users_list();
+                        }
+                    })
+                    .unwrap();
+                }
+                Err(e) => {
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_op_is_error(true);
+                            ui.set_op_status_msg(format!("Approval Fault: {}", e).into());
+                        }
+                    })
+                    .unwrap();
+                }
             }
         });
     });
 
     let app_weak_deny = app_weak_main.clone();
     let db_deny = Arc::clone(&db_clone);
+    let audit_deny = Arc::clone(&audit_clone);
     app.on_deny_pending_operator(move |target_user| {
         let ui_weak = app_weak_deny.clone();
         let db = Arc::clone(&db_deny);
+        let audit = Arc::clone(&audit_deny);
         let target = target_user.to_string().trim().to_string();
-        tokio::spawn(async move {
-            if db.deny_user("ADMIN", &target).await.is_ok() {
-                slint::invoke_from_event_loop(move || {
-                    let ui = ui_weak.unwrap();
-                    ui.set_pending_notification_name("NONE".into());
-                    ui.set_op_is_error(true);
-                    ui.set_op_status_msg(
-                        "Purged: Verification request discarded successfully.".into(),
-                    );
-                    ui.invoke_load_pending_users_list();
-                })
-                .unwrap();
-            }
-        });
-    });
 
-    let app_weak_pnd_list = app_weak_main.clone();
-    let db_pnd_list = Arc::clone(&db_clone);
-    app.on_load_pending_users_list(move || {
-        let ui_weak = app_weak_pnd_list.clone();
-        let db = Arc::clone(&db_pnd_list);
+        let (acting_user, acting_role_str) = if let Some(ui) = ui_weak.upgrade() {
+            (
+                ui.get_current_user_name().to_string(),
+                ui.get_current_user_role().to_string(),
+            )
+        } else {
+            ("UNKNOWN".to_string(), "Viewer".to_string())
+        };
+        let acting_role: ironvault_core::auth::Role = acting_role_str.into();
+
         tokio::spawn(async move {
-            let pool = db.get_pool().clone();
-            let query = "SELECT username, role, full_name, designation, section FROM ironvault.users WHERE status = 'PENDING'";
-            if let Ok(rows) = sqlx::query(query).fetch_all(&pool).await {
-                let mut slint_pending = Vec::new();
-                for r in rows {
-                    let u: String = r.try_get("username").unwrap_or_default();
-                    let ro: String = r.try_get("role").unwrap_or_default();
-                    let f: String = r.try_get("full_name").unwrap_or_default();
-                    let d: String = r.try_get("designation").unwrap_or_default();
-                    let s: String = r.try_get("section").unwrap_or_default();
-                    slint_pending.push(UserData { username: u.into(), role: ro.into(), last_login: "PENDING".into(), full_name: f.into(), designation: d.into(), expires_at: "".into(), allowed_schemas: s.into() });
+            match db.deny_user(&acting_user, &target).await {
+                Ok(_) => {
+                    let core_user = ironvault_core::auth::User {
+                        id: Default::default(),
+                        username: acting_user.clone(),
+                        role: acting_role,
+                        last_login: "".to_string(),
+                    };
+                    audit
+                        .log_action(
+                            &core_user,
+                            &format!("DENIED_OPERATOR target=@{}", target),
+                            "WARNING",
+                        )
+                        .ok();
+
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_pending_notification_name("NONE".into());
+                            ui.set_op_is_error(true);
+                            ui.set_op_status_msg(
+                                "Purged: Verification request discarded successfully.".into(),
+                            );
+                            ui.invoke_load_pending_users_list();
+                        }
+                    })
+                    .unwrap();
                 }
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.set_pending_users_list(ModelRc::from(Rc::new(VecModel::from(slint_pending))));
-                    }
-                }).unwrap();
+                Err(e) => {
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_op_is_error(true);
+                            ui.set_op_status_msg(format!("Denial Fault: {}", e).into());
+                        }
+                    })
+                    .unwrap();
+                }
             }
         });
     });
@@ -443,19 +521,51 @@ async fn main() -> Result<(), slint::PlatformError> {
 
     let app_weak_ban = app_weak_main.clone();
     let db_ban = Arc::clone(&db_clone);
+    let audit_ban = Arc::clone(&audit_clone);
     app.on_ban_user(move |target_user| {
         let ui_weak = app_weak_ban.clone();
         let db = Arc::clone(&db_ban);
+        let audit = Arc::clone(&audit_ban);
         let user_str = target_user.to_string().trim().to_string();
+
+        let (acting_user, acting_role_str) = if let Some(ui) = ui_weak.upgrade() {
+            (ui.get_current_user_name().to_string(), ui.get_current_user_role().to_string())
+        } else {
+            ("UNKNOWN".to_string(), "Viewer".to_string())
+        };
+        let acting_role: ironvault_core::auth::Role = acting_role_str.into();
+
         tokio::spawn(async move {
-            if db.ban_user("SUPERADMIN", &user_str).await.is_ok() {
-                slint::invoke_from_event_loop(move || {
-                    if let Some(ui) = ui_weak.upgrade() {
-                        ui.invoke_load_users_list();
-                        ui.set_op_is_error(true);
-                        ui.set_op_status_msg("REVOCATION SUCCESS: Operator credentials blacklisted and purged from registry.".into());
-                    }
-                }).unwrap();
+            match db.ban_user(&acting_user, &user_str).await {
+                Ok(_) => {
+                    let core_user = ironvault_core::auth::User {
+                        id: Default::default(),
+                        username: acting_user.clone(),
+                        role: acting_role,
+                        last_login: "".to_string(),
+                    };
+                    audit.log_action(
+                        &core_user,
+                        &format!("BANNED_OPERATOR target=@{}", user_str),
+                        "CRITICAL",
+                    ).ok();
+
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.invoke_load_users_list();
+                            ui.set_op_is_error(true);
+                            ui.set_op_status_msg("REVOCATION SUCCESS: Operator credentials blacklisted and purged from registry.".into());
+                        }
+                    }).unwrap();
+                }
+                Err(e) => {
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_op_is_error(true);
+                            ui.set_op_status_msg(format!("Ban Fault: {}", e).into());
+                        }
+                    }).unwrap();
+                }
             }
         });
     });

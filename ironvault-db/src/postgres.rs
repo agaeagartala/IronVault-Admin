@@ -67,7 +67,7 @@ impl DbClient {
              COALESCE(TO_CHAR(last_login_at, 'YYYY-MM-DD HH24:MI'), 'NEVER') as last_login \
              FROM ironvault.users \
              WHERE username = $1 AND hardware_fingerprint = $2 AND status = 'ACTIVE' \
-             AND (expires_at IS NULL OR expires_at > NOW())"
+             AND (expires_at IS NULL OR expires_at > NOW())",
         )
         .bind(username)
         .bind(hwid)
@@ -165,28 +165,51 @@ impl DbClient {
 
     pub async fn approve_user(
         &self,
-        _admin: &str,
+        admin: &str, // was `_admin` — now genuinely used
         target_user: &str,
         assigned_role: &str,
     ) -> Result<(), String> {
         sqlx::query(
-            "UPDATE ironvault.users SET status = 'ACTIVE', role = $1, expires_at = NOW() + '30 days'::INTERVAL \
-             WHERE username = $2"
+            "UPDATE ironvault.users SET status = 'ACTIVE', role = $1, expires_at = NOW() + '30 days'::INTERVAL, \
+            approved_by = $3 \
+            WHERE username = $2"
         )
         .bind(assigned_role)
         .bind(target_user)
+        .bind(admin)
         .execute(&self.pool)
         .await
         .map_err(|e| e.to_string())?;
         Ok(())
     }
 
-    pub async fn deny_user(&self, _admin: &str, target_user: &str) -> Result<(), String> {
+    pub async fn deny_user(&self, admin: &str, target_user: &str) -> Result<(), String> {
+        // Log who denied it before the row is deleted, since the row itself won't
+        // survive to tell you later.
+        log::info!(
+            "[AUDIT] Operator @{} denied pending registration for @{}",
+            admin,
+            target_user
+        );
         sqlx::query("DELETE FROM ironvault.users WHERE username = $1 AND status = 'PENDING'")
             .bind(target_user)
             .execute(&self.pool)
             .await
             .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub async fn ban_user(&self, admin: &str, target_user: &str) -> Result<(), String> {
+        log::info!(
+            "[AUDIT] Operator @{} banned/purged account @{}",
+            admin,
+            target_user
+        );
+        sqlx::query("DELETE FROM ironvault.users WHERE username = $1")
+            .bind(target_user)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| format!("Failed to execute revocation purge: {}", e))?;
         Ok(())
     }
 
@@ -251,15 +274,6 @@ impl DbClient {
         .execute(&self.pool)
         .await
         .map_err(|e| format!("Failed to update role state: {}", e))?;
-        Ok(())
-    }
-
-    pub async fn ban_user(&self, _admin_name: &str, target_user: &str) -> Result<(), String> {
-        sqlx::query("DELETE FROM ironvault.users WHERE username = $1")
-            .bind(target_user)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| format!("Failed to execute revocation purge: {}", e))?;
         Ok(())
     }
 }

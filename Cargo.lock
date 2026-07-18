@@ -3242,6 +3242,7 @@ name = "ironvault-ui"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "dotenvy",
  "embed-resource",
  "env_logger",
  "image",
