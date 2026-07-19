@@ -1,0 +1,68 @@
+import { Theme } from "../theme.slint";
+
+// A button that requires two clicks to fire: first click arms it (visual
+// warning state + countdown), second click within the window actually
+// invokes the action. Guards against both accidental single-clicks and
+// double-click-triggers-twice, since the first click of any double-click
+// only arms rather than executes.
+export component ConfirmButton inherits Rectangle {
+    in property <string> text;
+    in property <string> confirm_text: "Confirm?";
+    in property <string> icon_text: "";
+    in property <length> button_height: 38px;
+    in property <int> arm_timeout_ms: 3000;
+    callback confirmed();
+
+    property <bool> armed: false;
+
+    height: root.button_height;
+    border-radius: 8px;
+    background: root.armed
+        ? (ta.pressed ? #B91C1C : (ta.has-hover ? #DC2626 : #EF4444))
+        : (ta.pressed ? Theme.bg-card-hover : (ta.has-hover ? Theme.bg-card : Theme.bg-card));
+    border-width: 1px;
+    border-color: root.armed ? Theme.brand-danger : Theme.border-color;
+
+    animate background { duration: 150ms; }
+    animate border-color { duration: 150ms; }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: 8px;
+        if (root.icon_text != ""): Text {
+            text: root.armed ? "⚠️" : root.icon_text;
+            font-size: 14px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.armed ? root.confirm_text : root.text;
+            color: root.armed ? white : Theme.text-primary;
+            font-weight: 800;
+            font-size: 12px;
+            vertical-alignment: center;
+        }
+    }
+
+    ta := TouchArea {
+        clicked => {
+            if (root.armed) {
+                root.armed = false;
+                root.confirmed();
+            } else {
+                root.armed = true;
+                disarm_timer.running = true;
+            }
+        }
+    }
+
+    // Auto-disarm if the second click never comes, so the button doesn't
+    // stay stuck in a "loaded" state indefinitely.
+    disarm_timer := Timer {
+        interval: root.arm_timeout_ms * 1ms;
+        running: false;
+        triggered => {
+            root.armed = false;
+            self.running = false;
+        }
+    }
+}

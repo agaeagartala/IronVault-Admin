@@ -11,6 +11,7 @@ import {
     PensionDetailsSlint,
     PensionStatusSlint,
 } from "views/pension.slint";
+import { ConfirmButton } from "components/confirm_button.slint";
 
 component NavItem inherits Rectangle {
     in property <string> text;
@@ -1500,9 +1501,11 @@ export component AppWindow inherits Window {
                                                             clicked => { root.approve_pending_operator(p_user.username, "Operator"); }
                                                         }
 
-                                                        Button {
-                                                            icon: @image-url("assets/allowances-no-talking.svg");
-                                                            clicked => { root.deny_pending_operator(p_user.username); }
+                                                        ConfirmButton {
+                                                            text: "Deny";
+                                                            confirm_text: "Sure?";
+                                                            button_height: 32px;
+                                                            confirmed => { root.deny_pending_operator(p_user.username); }
                                                         }
                                                     }
                                                 }
@@ -1982,32 +1985,33 @@ export component AppWindow inherits Window {
                                                         }
 
                                                         HorizontalLayout {
-                                                            spacing: 12px;
-                                                            alignment: LayoutAlignment.stretch;
-                                                            Button {
-                                                                text: "🔑 Reset One-Time Access Token";
-                                                                height: 38px;
-                                                                horizontal-stretch: 1;
-                                                                clicked => { root.reset_user_password(root.lease_target_user); root.lease_target_user = ""; }
-                                                            }
+                                            spacing: 12px;
+                                            alignment: LayoutAlignment.stretch;
+                                            ConfirmButton {
+                                                text: "🔑 Reset One-Time Access Token";
+                                                confirm_text: "Confirm Reset?";
+                                                horizontal-stretch: 1;
+                                                confirmed => { root.reset_user_password(root.lease_target_user); root.lease_target_user = ""; }
+                                            }
 
-                                                            Button {
-                                                                text: "🚨 Ban Operator Profile";
-                                                                height: 38px;
-                                                                horizontal-stretch: 1;
-                                                                clicked => { root.ban_user(root.lease_target_user); root.lease_target_user = ""; }
-                                                            }
-                                                        }
+                                            ConfirmButton {
+                                                text: "🚨 Ban Operator Profile";
+                                                confirm_text: "Confirm Ban?";
+                                                horizontal-stretch: 1;
+                                                confirmed => { root.ban_user(root.lease_target_user); root.lease_target_user = ""; }
+                                            }
+                                        }
 
-                                                        HorizontalLayout {
-                                                            padding-top: 4px;
-                                                            Button {
-                                                                text: "🔓 Release Hardware Fingerprint (HWID Unblock)";
-                                                                height: 36px;
-                                                                horizontal-stretch: 1;
-                                                                clicked => { root.request_hwid_unblock(root.lease_target_user); root.lease_target_user = ""; }
-                                                            }
-                                                        }
+                                        HorizontalLayout {
+                                            padding-top: 4px;
+                                            ConfirmButton {
+                                                text: "🔓 Release Hardware Fingerprint (HWID Unblock)";
+                                                confirm_text: "Confirm Release?";
+                                                button_height: 36px;
+                                                horizontal-stretch: 1;
+                                                confirmed => { root.request_hwid_unblock(root.lease_target_user); root.lease_target_user = ""; }
+                                            }
+                                        }
 
                                                         Rectangle {
                                                             height: 8px;

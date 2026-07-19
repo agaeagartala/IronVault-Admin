@@ -1,5 +1,6 @@
 import { Button, LineEdit, ScrollView } from "std-widgets.slint";
 import { Theme, FluidButton } from "../theme.slint"; // Import FluidButton here
+import { ConfirmButton } from "../components/confirm_button.slint";
 
 export struct GpfCaseDetails {
     regd_no: string,
@@ -166,23 +167,27 @@ export component GpfFinalPaymentView inherits Rectangle {
                         GridLayout {
                             spacing: 10px;
                             Row {
-                                FluidButton { 
-                                    text: "💥 Drop Full Settlement Profile"; is_destructive: true;
-                                    clicked => { root.request_delete_full_case(root.op_regd_no, root.op_series_id, root.op_account_no); } 
+                                ConfirmButton {
+                                    text: "💥 Drop Full Settlement Profile";
+                                    confirm_text: "⚠️ Confirm Full Drop?";
+                                    confirmed => { root.request_delete_full_case(root.op_regd_no, root.op_series_id, root.op_account_no); }
                                 }
-                                FluidButton { 
-                                    text: "🗑️ Purge Application Row Element"; is_destructive: true;
-                                    clicked => { root.request_delete_application(root.op_regd_no); } 
+                                ConfirmButton {
+                                    text: "🗑️ Purge Application Row Element";
+                                    confirm_text: "⚠️ Confirm Purge?";
+                                    confirmed => { root.request_delete_application(root.op_regd_no); }
                                 }
                             }
                             Row {
-                                FluidButton { 
-                                    text: "📊 Flush Pre-Calculations Cluster"; 
-                                    clicked => { root.request_delete_precalc(root.op_regd_no); } 
+                                ConfirmButton {
+                                    text: "📊 Flush Pre-Calculations Cluster";
+                                    confirm_text: "Confirm Flush?";
+                                    confirmed => { root.request_delete_precalc(root.op_regd_no); }
                                 }
-                                FluidButton { 
-                                    text: "📜 Drop Signed Authority Certificates"; 
-                                    clicked => { root.request_delete_auth_reports(root.op_regd_no); } 
+                                ConfirmButton {
+                                    text: "📜 Drop Signed Authority Certificates";
+                                    confirm_text: "Confirm Drop?";
+                                    confirmed => { root.request_delete_auth_reports(root.op_regd_no); }
                                 }
                             }
                         }
