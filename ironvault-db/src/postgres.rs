@@ -25,6 +25,14 @@ pub struct DbClient {
     pool: PgPool,
 }
 
+#[derive(Clone, Debug)]
+pub struct DbAuditEntry {
+    pub timestamp: String,
+    pub operator_id: String,
+    pub operation_action: String,
+    pub level: String,
+}
+
 impl DbClient {
     /// Public getter mapping to expose the underlying PgPool reference safely
     pub fn get_pool(&self) -> &sqlx::PgPool {
@@ -143,6 +151,60 @@ impl DbClient {
         .await
         .map_err(|e| format!("Registration record reject: {}", e))?;
         Ok(())
+    }
+
+    pub async fn log_audit_event(
+        &self,
+        operator: &str,
+        action: &str,
+        level: &str,
+        schema: &str,
+    ) -> Result<(), String> {
+        sqlx::query(
+            "INSERT INTO ironvault.db_audit_logs (operator_id, operation_action, impact_level, target_schema) \
+             VALUES ($1, $2, $3, $4)"
+        )
+        .bind(operator)
+        .bind(action)
+        .bind(level)
+        .bind(schema)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// FIXED (item #10): reads audit history back from Postgres so the
+    /// dashboard's audit tab reflects the *actual* single source of truth,
+    /// instead of only ever showing file-log entries while DB entries sat
+    /// unused.
+    ///
+    /// NOTE: assumes `ironvault.db_audit_logs` has a `created_at` timestamp
+    /// column with a default of NOW() (standard for an append-only log table).
+    /// If your schema uses a different column name, adjust the SELECT/ORDER BY
+    /// below to match.
+    pub async fn fetch_recent_audit_logs(&self, limit: i64) -> Result<Vec<DbAuditEntry>, String> {
+        let rows = sqlx::query(
+            "SELECT COALESCE(TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI'), 'UNKNOWN') as ts, \
+                    operator_id, operation_action, impact_level \
+             FROM ironvault.db_audit_logs \
+             ORDER BY created_at DESC \
+             LIMIT $1",
+        )
+        .bind(limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| e.to_string())?;
+
+        Ok(rows
+            .into_iter()
+            .map(|r| DbAuditEntry {
+                timestamp: r.get("ts"),
+                operator_id: r.get("operator_id"),
+                operation_action: r.get("operation_action"),
+                level: r.get("impact_level"),
+            })
+            .collect())
     }
 
     pub async fn fetch_next_pending_user(&self) -> Result<Option<String>, String> {

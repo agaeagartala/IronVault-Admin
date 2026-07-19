@@ -20,17 +20,39 @@ extern "C" {
     fn VMEnd();
 }
 
-/// Helper function to log user movements directly into the PostgreSQL relational audit table
-#[allow(dead_code)]
-async fn log_to_db(pool: &sqlx::PgPool, operator: &str, action: &str, level: &str, schema: &str) {
-    let query = "INSERT INTO ironvault.db_audit_logs (operator_id, operation_action, impact_level, target_schema) VALUES ($1, $2, $3, $4)";
-    let _ = sqlx::query(query)
-        .bind(operator)
-        .bind(action)
-        .bind(level)
-        .bind(schema)
-        .execute(pool)
-        .await;
+/// FIXED (item #10): single entry point for recording an audit event.
+/// Writes to Postgres first (the authoritative store, queryable and durable
+/// across file rotation); if that write fails, falls back to the file-based
+/// AuditLogger so the event isn't lost entirely — it just won't show up in
+/// the dashboard until/unless someone checks the file directly during a
+/// DB outage. This replaces the old `log_to_db` free function, which wrote
+/// to Postgres but was never read back anywhere, leaving two disconnected
+/// audit stores.
+async fn record_audit(
+    db: &DbClient,
+    file_fallback: &AuditLogger,
+    actor_username: &str,
+    actor_role: ironvault_core::auth::Role,
+    action: &str,
+    level: &str,
+) {
+    if let Err(e) = db
+        .log_audit_event(actor_username, action, level, "SYSTEM")
+        .await
+    {
+        log::warn!(
+            "[AUDIT] DB write failed ({}), falling back to file logger for: {}",
+            e,
+            action
+        );
+        let core_user = ironvault_core::auth::User {
+            id: Default::default(),
+            username: actor_username.to_string(),
+            role: actor_role,
+            last_login: "".to_string(),
+        };
+        file_fallback.log_action(&core_user, action, level).ok();
+    }
 }
 
 #[tokio::main]
@@ -50,9 +72,9 @@ async fn main() -> Result<(), slint::PlatformError> {
     ironvault_core::security::enforce_core_security_checks(&hwid);
     let audit_logger = Arc::new(AuditLogger::new("ironvault.audit.log"));
 
-    // FIXED: credentials now come from environment variables instead of being
-    // hardcoded in source. Fails fast with a clear message if anything required
-    // is missing, rather than silently falling back to a guessable default.
+    // FIXED (item #4): credentials now come from environment variables instead
+    // of being hardcoded in source. Fails fast with a clear message if anything
+    // required is missing, rather than silently falling back to a guessable default.
     let db_host = std::env::var("IRONVAULT_DB_HOST").unwrap_or_else(|_| "localhost".to_string());
     let db_port: u16 = std::env::var("IRONVAULT_DB_PORT")
         .ok()
@@ -190,15 +212,10 @@ async fn main() -> Result<(), slint::PlatformError> {
                         }
                     }).unwrap();
 
-                    let login_pool = db.get_pool().clone();
-                    log_to_db(&login_pool, &user.username, "USER_LOGIN_SUCCESS", "NOMINAL", "SYSTEM").await;
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: user.username,
-                        role: user.role.into(),
-                        last_login: user.last_login,
-                    };
-                    audit.log_action(&core_user, "OPERATOR_DB_LOGIN_SUCCESS", "CRITICAL").ok();
+                    // FIXED (item #10): single unified audit call replacing the
+                    // previous log_to_db + audit.log_action duplicate pair.
+                    let role_for_audit: ironvault_core::auth::Role = user.role.clone().into();
+                    record_audit(&db, &audit, &user.username, role_for_audit, "USER_LOGIN_SUCCESS", "CRITICAL").await;
                 }
                 Err(err_msg) => {
                     slint::invoke_from_event_loop(move || {
@@ -218,18 +235,22 @@ async fn main() -> Result<(), slint::PlatformError> {
     // =========================================================================
     let app_weak_logout = app_weak_main.clone();
     let db_logout = Arc::clone(&db_clone);
+    let audit_logout = Arc::clone(&audit_clone);
     app.on_request_logout(move || {
         let ui_weak = app_weak_logout.clone();
-        let db = db_logout.clone();
+        let db = Arc::clone(&db_logout);
+        let audit = Arc::clone(&audit_logout);
 
-        let username_str = if let Some(ui) = ui_weak.upgrade() {
-            ui.get_current_user_name().to_string()
+        let (username_str, role_str) = if let Some(ui) = ui_weak.upgrade() {
+            (
+                ui.get_current_user_name().to_string(),
+                ui.get_current_user_role().to_string(),
+            )
         } else {
-            "UNKNOWN".to_string()
+            ("UNKNOWN".to_string(), "Viewer".to_string())
         };
 
         tokio::spawn(async move {
-            let pool = db.get_pool().clone();
             let ui_weak_clear = ui_weak.clone();
 
             let _ = slint::invoke_from_event_loop(move || {
@@ -246,13 +267,17 @@ async fn main() -> Result<(), slint::PlatformError> {
                 }
             });
 
+            // FIXED (item #10): logout previously wrote only to the Postgres
+            // table via log_to_db, with no file-fallback and no unified path.
             if username_str != "UNKNOWN" && !username_str.is_empty() {
-                log_to_db(
-                    &pool,
+                let acting_role: ironvault_core::auth::Role = role_str.into();
+                record_audit(
+                    &db,
+                    &audit,
                     &username_str,
+                    acting_role,
                     "USER_LOGOUT_SUCCESS",
                     "NOMINAL",
-                    "SYSTEM",
                 )
                 .await;
             }
@@ -357,22 +382,18 @@ async fn main() -> Result<(), slint::PlatformError> {
         tokio::spawn(async move {
             match db.approve_user(&acting_user, &target, &assigned_role).await {
                 Ok(_) => {
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: acting_user.clone(),
-                        role: acting_role,
-                        last_login: "".to_string(),
-                    };
-                    audit
-                        .log_action(
-                            &core_user,
-                            &format!(
-                                "APPROVED_OPERATOR target=@{} assigned_role={}",
-                                target, assigned_role
-                            ),
-                            "CRITICAL",
-                        )
-                        .ok();
+                    record_audit(
+                        &db,
+                        &audit,
+                        &acting_user,
+                        acting_role,
+                        &format!(
+                            "APPROVED_OPERATOR target=@{} assigned_role={}",
+                            target, assigned_role
+                        ),
+                        "CRITICAL",
+                    )
+                    .await;
 
                     slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -422,19 +443,15 @@ async fn main() -> Result<(), slint::PlatformError> {
         tokio::spawn(async move {
             match db.deny_user(&acting_user, &target).await {
                 Ok(_) => {
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: acting_user.clone(),
-                        role: acting_role,
-                        last_login: "".to_string(),
-                    };
-                    audit
-                        .log_action(
-                            &core_user,
-                            &format!("DENIED_OPERATOR target=@{}", target),
-                            "WARNING",
-                        )
-                        .ok();
+                    record_audit(
+                        &db,
+                        &audit,
+                        &acting_user,
+                        acting_role,
+                        &format!("DENIED_OPERATOR target=@{}", target),
+                        "WARNING",
+                    )
+                    .await;
 
                     slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -523,12 +540,10 @@ async fn main() -> Result<(), slint::PlatformError> {
 
     // =========================================================================
     // --- COMBINED ACCESS SETTINGS COMMIT (role + lease + schema, atomic) ---
-    // FIXED (schema-toggle race, item #8): previously `extend_user_lease` and
-    // `commit_schema_toggles` fired as two independent async writes to the same
-    // `section` column, and could overwrite each other depending on which
-    // completed last. This single callback + single SQL statement removes the
-    // race entirely, and is now audited like the other privilege-affecting
-    // actions above.
+    // FIXED (item #8): previously `extend_user_lease` and `commit_schema_toggles`
+    // fired as two independent async writes to the same `section` column, and
+    // could overwrite each other depending on which completed last. This single
+    // callback + single SQL statement removes the race entirely.
     // =========================================================================
     let app_weak_settings = app_weak_main.clone();
     let db_settings = Arc::clone(&db_clone);
@@ -558,20 +573,14 @@ async fn main() -> Result<(), slint::PlatformError> {
         tokio::spawn(async move {
             match db.update_user_full_access(&user_str, &role_str, days_valid, &schema_str).await {
                 Ok(_) => {
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: acting_user.clone(),
-                        role: acting_role,
-                        last_login: "".to_string(),
-                    };
-                    audit.log_action(
-                        &core_user,
+                    record_audit(
+                        &db, &audit, &acting_user, acting_role,
                         &format!(
                             "UPDATED_ACCESS target=@{} role={} lease_days={} schemas=[{}]",
                             user_str, role_str, days_valid, schema_str
                         ),
                         "CRITICAL",
-                    ).ok();
+                    ).await;
 
                     slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -614,17 +623,11 @@ async fn main() -> Result<(), slint::PlatformError> {
         tokio::spawn(async move {
             match db.ban_user(&acting_user, &user_str).await {
                 Ok(_) => {
-                    let core_user = ironvault_core::auth::User {
-                        id: Default::default(),
-                        username: acting_user.clone(),
-                        role: acting_role,
-                        last_login: "".to_string(),
-                    };
-                    audit.log_action(
-                        &core_user,
+                    record_audit(
+                        &db, &audit, &acting_user, acting_role,
                         &format!("BANNED_OPERATOR target=@{}", user_str),
                         "CRITICAL",
-                    ).ok();
+                    ).await;
 
                     slint::invoke_from_event_loop(move || {
                         if let Some(ui) = ui_weak.upgrade() {
@@ -784,42 +787,48 @@ async fn main() -> Result<(), slint::PlatformError> {
         });
     });
 
-    // --- AUDIT LOG STREAM RELOAD (single registration) ---
+    // =========================================================================
+    // --- AUDIT LOG STREAM RELOAD ---
+    // FIXED (item #10): now reads directly from Postgres (the authoritative
+    // audit store) instead of the file-based AuditLogger, so the dashboard
+    // reflects everything recorded via `record_audit`, not just the subset
+    // that used to be routed through the file log alone.
+    // =========================================================================
     let app_weak_logs_reload = app_weak_main.clone();
-    let audit_logs_reload = Arc::clone(&audit_clone);
+    let db_logs_reload = Arc::clone(&db_clone);
     app.on_trigger_log_stream_reload(move || {
         let ui_weak = app_weak_logs_reload.clone();
-        let logger = audit_logs_reload.clone();
+        let db = Arc::clone(&db_logs_reload);
 
         tokio::spawn(async move {
-            let raw_records = logger.query_logs_optimized(40);
+            match db.fetch_recent_audit_logs(40).await {
+                Ok(raw_records) => {
+                    let ui_mapped_records: Vec<AuditLogUiData> = raw_records
+                        .into_iter()
+                        .map(|item| AuditLogUiData {
+                            timestamp: item.timestamp.into(),
+                            operator_id: item.operator_id.into(),
+                            operation_action: item.operation_action.into(),
+                            level: item.level.into(),
+                        })
+                        .collect();
 
-            let ui_mapped_records: Vec<AuditLogUiData> = raw_records
-                .into_iter()
-                .map(|item| {
-                    let formatted_time = if item.timestamp.len() >= 16 {
-                        item.timestamp[11..16].to_string()
-                    } else {
-                        item.timestamp
-                    };
-
-                    AuditLogUiData {
-                        timestamp: formatted_time.into(),
-                        operator_id: item.username.into(),
-                        operation_action: item.action.into(),
-                        level: item.impact_level.into(),
-                    }
-                })
-                .collect();
-
-            slint::invoke_from_event_loop(move || {
-                if let Some(ui) = ui_weak.upgrade() {
-                    ui.set_dashboard_audit_stream(ModelRc::from(Rc::new(VecModel::from(
-                        ui_mapped_records,
-                    ))));
+                    slint::invoke_from_event_loop(move || {
+                        if let Some(ui) = ui_weak.upgrade() {
+                            ui.set_dashboard_audit_stream(ModelRc::from(Rc::new(VecModel::from(
+                                ui_mapped_records,
+                            ))));
+                        }
+                    })
+                    .unwrap();
                 }
-            })
-            .unwrap();
+                Err(e) => {
+                    log::error!(
+                        "[AUDIT] Failed to load audit log stream from database: {}",
+                        e
+                    );
+                }
+            }
         });
     });
 
