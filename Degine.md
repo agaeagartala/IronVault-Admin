@@ -85,3 +85,24 @@ pub struct ActiveUser {
     pub designation: String,
     pub expires_at: String,
 }
+
+2.2 Schema Access Matrix (SchemaAccessState)
+Transferred from Rust to Slint to grant or revoke UI access dynamically:
+
+Rust
+pub struct SchemaAccessState {
+    pub gpffp: bool,
+    pub vlcs: bool,
+    pub agtall: bool,
+    pub agdak: bool,
+    pub sai_agartala: bool,
+    pub pendak: bool,
+    pub penindex: bool,
+}
+
+3. Thread Synchronization & Memory Ownership
+Arc Reference Sharing: Global database connections (Arc<DbClient>) and Oracle hubs (Arc<OracleConnection>) are wrapped in std::sync::Arc pointers and safely cloned across Tokio worker tasks.
+
+UI Event Loop Isolation: All async Rust tasks modify Slint UI thread memory exclusively via thread-safe callbacks (slint::invoke_from_event_loop).
+
+Zero Raw Pointers: Raw memory operations are isolated behind FFI links (extern "C") to VMProtect and Themida SDK libraries, maintaining standard Rust safety across the rest of the codebase.

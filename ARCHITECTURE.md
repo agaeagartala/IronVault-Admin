@@ -44,7 +44,7 @@ ironvault-admin/
 │       ├── gpf.rs                   # GPFFP schema queries & cascade mutations
 │       ├── pendak.rs                # Outward Pension DAK records & recipient handlers
 │       ├── sai_agartala.rs          # Pension biographical details & tracking queries
-│       :: vlcs.rs                   # VLCS legacy ledger operations
+│       └── vlcs.rs                   # VLCS legacy ledger operations
 │
 └── ironvault-ui/                    # Slint Native GUI & Main Orchestrator
 ├── Cargo.toml
@@ -67,7 +67,7 @@ ironvault-admin/
 
 ## 🔐 Core Component Architecture
 
-+-----------------------------------+
+                   +-----------------------------------+
                    |         Slint UI Front-End        |
                    | (main.slint / Neon Design System) |
                    +-----------------------------------+
@@ -123,6 +123,41 @@ CREATE TABLE ironvault.db_audit_logs (
     target_schema VARCHAR(100) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- IronVault: consolidated migration for the auth/audit hardening changes.
+-- Run this ONCE against the target database before deploying the updated binary.
+
+BEGIN;
+
+-- 1. New column needed by approve_user's audit trail (fix #5).
+ALTER TABLE ironvault.users
+    ADD COLUMN IF NOT EXISTS approved_by TEXT;
+
+-- 2. Force every existing ACTIVE/EXPIRED account into the reset flow.
+--    Old passwords are SHA-256(password+username) and cannot be verified by
+--    the new bcrypt-based authenticate_user — there is no way to migrate
+--    them silently, so every operator must go through a one-time reset.
+--    We stage this using the SAME temp_token mechanism the app already has,
+--    so no new UI is needed: each user gets a fresh hashed token and lands
+--    in the forced-password-reset screen on next login attempt.
+--
+--    NOTE: this UPDATE only marks accounts; it does NOT print tokens. Use
+--    the accompanying `generate_reset_tokens.sql` (below) or the app's
+--    existing "Reset One-Time Access Token" button per-user instead if you
+--    want tokens issued (and hashed) through the app's own crypto path
+--    rather than duplicated SQL-side logic.
+UPDATE ironvault.users
+SET status = 'EXPIRED'
+WHERE status = 'ACTIVE';
+
+-- 3. Clear all stored HWIDs — the new licensing::generate_hwid() algorithm
+--    produces different output than the old constant-based one, so every
+--    stored hardware_fingerprint is stale and would otherwise permanently
+--    lock every operator out.
+UPDATE ironvault.users
+SET hardware_fingerprint = 'UNKNOWN';
+
+COMMIT;
 
 ---
 
