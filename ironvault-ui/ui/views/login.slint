@@ -1,110 +1,78 @@
-// Login view - Secure authentication form
+import { Button, LineEdit } from "std-widgets.slint";
+import { Theme } from "../theme.slint";
+import { RegisterView, RegisterFormFields } from "register.slint";
 
-import { Button, LineEdit, VerticalBox, HorizontalBox } from "std-widgets.slint";
+export { RegisterFormFields }
 
 export component LoginView inherits Rectangle {
-    callback login_requested(string, string);
-    callback registration_requested(string, string);
-    
-    in-out property <string> error_message: "";
-    in-out property <bool> is_register_mode: false;
+    in-out property <string> form_user: "";
+    in-out property <string> form_pass: "";
+    in-out property <string> login_error: "";
+    in-out property <RegisterFormFields> registration_fields;
+    property <string> screen_state: "landing";
 
-    in-out property <string> captcha_question: "";
-    in-out property <string> captcha_answer: "";
-    
-    background: #0B0F19;
-    
-    Rectangle {
-        width: 400px;
-        height: root.is_register_mode ? 490px : 420px;
-        background: #111827;
-        border-radius: 12px;
-        border-width: 1px;
-        border-color: #1F2937;
-        
-        VerticalBox {
-            padding: 40px;
-            spacing: 18px;
+    callback login_requested(string, string);
+    callback registration_requested(string, string, string, string, string, string, string);
+
+    horizontal-stretch: 1;
+    background: Theme.bg-main;
+
+    VerticalLayout {
+        alignment: center;
+        HorizontalLayout {
             alignment: center;
-            
-            Text { 
-                text: root.is_register_mode ? "REQUEST NODE ACCESS" : "IRONVAULT SECURE LOGIN"; 
-                font-size: 20px; 
-                font-weight: 800; 
-                color: #38BDF8; 
-                horizontal-alignment: center; 
-            }
-            Text { 
-                text: root.is_register_mode ? "Account permissions must be assigned by an active SuperAdmin" : "Database Matrix Handshake Engine"; 
-                font-size: 11px; 
-                color: #6B7280; 
-                horizontal-alignment: center; 
-                wrap: word-wrap;
-            }
-            
-            Text { 
-                text: root.error_message; 
-                color: (root.error_message == "Account requested! Awaiting SuperAdmin role assignment.") ? #10B981 : #EF4444; 
-                font-size: 12px; 
-                horizontal-alignment: center; 
-                wrap: word-wrap; 
-            }
-            
-            VerticalBox {
-                spacing: 5px;
-                Text { text: "Username"; color: #9CA3AF; font-size: 12px; }
-                username_in := LineEdit { placeholder-text: "Requested Operator ID"; }
-            }
-            
-            VerticalBox {
-                spacing: 5px;
-                Text { text: "Passcode"; color: #9CA3AF; font-size: 12px; }
-                password_in := LineEdit { input-type: password; placeholder-text: "••••••••"; }
-            }
-            
-            VerticalBox {
-                spacing: 5px;
-                visible: root.is_register_mode;
-                Text { text: "Human Verification Factor Check"; color: #9CA3AF; font-size: 12px; }
-                HorizontalBox {
-                    spacing: 10px;
-                    alignment: start;
-                    Rectangle {
-                        width: 90px; height: 32px; background: #1F2937; border-radius: 4px;
-                        Text { text: root.captcha_question + " ="; color: #F3F4F6; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+            Rectangle {
+                width: root.screen_state == "register" ? 680px : 440px;
+                background: Theme.bg-card;
+                border-radius: 16px;
+                border-width: 1px;
+                border-color: Theme.border-color;
+                drop-shadow-blur: 40px;
+                drop-shadow-color: #00E5FF1A;
+                animate width { duration: 200ms; easing: ease-in-out; }
+
+                VerticalLayout {
+                    padding: 40px;
+                    spacing: 16px;
+
+                    Text { text: "IRONVAULT"; font-size: 32px; font-weight: 900; color: Theme.brand-primary; horizontal-alignment: center; }
+                    Rectangle { height: 1px; background: Theme.border-color; }
+
+                    if (root.screen_state == "landing"): VerticalLayout {
+                        spacing: 16px;
+                        padding-top: 10px;
+                        Button { text: "🔑  Access Terminal Login"; height: 45px; clicked => { root.screen_state = "login"; root.login_error = ""; } }
+                        Button { text: "📝  Enroll New Node Profile"; height: 45px; clicked => { root.screen_state = "register"; root.login_error = ""; } }
                     }
-                    human_ans := LineEdit { placeholder-text: "?"; width: 80px; }
-                }
-            }
-            
-            Rectangle { height: 5px; }
-            
-            if !root.is_register_mode : Button {
-                text: "AUTHENTICATE CORE ENGINE";
-                clicked => { root.login_requested(username_in.text, password_in.text); }
-            }
-            
-            if root.is_register_mode : Button {
-                text: "SUBMIT REGISTRATION REQUEST";
-                clicked => { 
-                    if (human_ans.text != root.captcha_answer) {
-                        root.error_message = "HUMAN VERIFICATION ERROR: Incorrect calculation answer.";
-                    } else {
-                        root.registration_requested(username_in.text, password_in.text);
-                        username_in.text = "";
-                        password_in.text = "";
-                        human_ans.text = "";
+
+                    if (root.screen_state == "login"): VerticalLayout {
+                        spacing: 14px;
+                        LineEdit { text <=> root.form_user; placeholder_text: "Operator ID"; height: 34px; }
+                        LineEdit { text <=> root.form_pass; placeholder_text: "Secret Token"; input-type: password; height: 34px; }
+                        Button { text: "Authenticate Access"; height: Theme.button-height; horizontal-stretch: 1; clicked => { root.login_requested(root.form_user, root.form_pass); } }
+                        if (root.login_error != ""): Rectangle {
+                            background: #FF336633; border-radius: 6px; border-width: 1px; border-color: Theme.brand-danger;
+                            HorizontalLayout { padding: 8px; Text { text: root.login_error; color: #FFA0B4; font-size: 12px; font-weight: 600; horizontal-alignment: center; } }
+                        }
+                        HorizontalLayout {
+                            spacing: 14px; padding-top: 18px;
+                            Button { text: "Return Gateway"; height: Theme.button-height; horizontal-stretch: 1; clicked => { root.screen_state = "landing"; root.login_error = ""; } }
+                        }
                     }
-                }
-            }
-            
-            HorizontalBox {
-                alignment: center;
-                spacing: 5px;
-                Text { text: root.is_register_mode ? "Already provisioned?" : "First time on this machine?"; color: #6B7280; font-size: 11px; }
-                TouchArea {
-                    clicked => { root.is_register_mode = !root.is_register_mode; root.error_message = ""; }
-                    Text { text: root.is_register_mode ? "Sign In" : "Request Access"; color: #38BDF8; font-size: 11px; font-weight: 700; }
+
+                    if (root.screen_state == "register"): RegisterView {
+                        operational-error: root.login_error;
+                        form-data <=> root.registration_fields;
+                        submit-registration => {
+                            root.registration_requested(
+                                root.registration_fields.username, root.registration_fields.secret,
+                                root.registration_fields.first-name, root.registration_fields.middle-name,
+                                root.registration_fields.last-name, root.registration_fields.designation,
+                                root.registration_fields.section
+                            );
+                        }
+                        cancel-registration => { root.screen_state = "landing"; root.login_error = ""; }
+                    }
                 }
             }
         }
