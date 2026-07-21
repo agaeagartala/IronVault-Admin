@@ -3,6 +3,7 @@
 
 use crate::context::{record_audit, SharedContext};
 use crate::{AppWindow, SchemaAccessState};
+use ironvault_core::auth::{classify_auth_outcome, AuthDecision};
 use slint::ComponentHandle;
 use sqlx::Row;
 
@@ -18,8 +19,30 @@ pub fn register(app: &AppWindow, ctx: SharedContext) {
             let plain_password = password.to_string().trim().to_string();
 
             tokio::spawn(async move {
-                match ctx.db.authenticate_user(&typed_username, &plain_password, &ctx.hwid).await {
-                    Ok(user) => {
+                let normal_result = ctx.db.authenticate_user(&typed_username, &plain_password, &ctx.hwid).await;
+
+                // Only attempt the temp-token check if the normal path failed — no point
+                // spending a DB round-trip if the primary credential already succeeded.
+                let temp_token_result = if normal_result.is_err() {
+                    Some(ctx.db.authenticate_via_temp_token(&typed_username, &plain_password, &ctx.hwid).await)
+                } else {
+                    None
+                };
+
+                // Reduce both async results down to plain Ok(())/Err(()) shape for the
+                // synchronous classifier — this is the hand-off point from async I/O
+                // results into the virtualized decision function.
+                let normal_ok = normal_result.as_ref().map(|_| ()).map_err(|_| ());
+                let token_ok = temp_token_result.as_ref()
+                    .map(|r| r.as_ref().map(|_| ()).map_err(|_| ()))
+                    .unwrap_or(Err(()));
+
+                let decision = classify_auth_outcome(&normal_ok, &token_ok);
+
+                match decision {
+                    AuthDecision::GrantFullSession => {
+                        let user = normal_result.expect("GrantFullSession implies normal_result was Ok");
+                        
                         let pool = ctx.db.get_pool().clone();
                         let profile_query = sqlx::query(
                             "SELECT full_name, designation, section, expires_at FROM ironvault.users WHERE username = $1"
@@ -90,35 +113,28 @@ pub fn register(app: &AppWindow, ctx: SharedContext) {
                         let role_for_audit: ironvault_core::auth::Role = user.role.clone().into();
                         record_audit(&ctx, &user.username, role_for_audit, "USER_LOGIN_SUCCESS", "CRITICAL").await;
                     }
-
-                    Err(_normal_auth_err) => {
-                        // Password authentication failed. Try one-time reset token authentication.
-                        match ctx.db.authenticate_via_temp_token(&typed_username, &plain_password, &ctx.hwid).await {
-                            Ok(user) => {
-                                let ui_username = user.username.clone();
-                                record_audit(&ctx, &ui_username, user.role.clone().into(), "OTA_TOKEN_LOGIN_SUCCESS", "CRITICAL").await;
-
-                                slint::invoke_from_event_loop(move || {
-                                    if let Some(ui) = ui_weak.upgrade() {
-                                        ui.set_login_error("".into());
-                                        ui.set_current_user_name(ui_username.into());
-                                        // Force password reset. Do NOT mark the user as logged in yet.
-                                        ui.set_forced_password_reset_state(true);
-                                    }
-                                }).unwrap();
+                    AuthDecision::RequireForcedPasswordReset => {
+                        let user = temp_token_result
+                            .expect("RequireForcedPasswordReset implies temp_token_result was Some")
+                            .expect("RequireForcedPasswordReset implies temp_token_result was Ok");
+                        let ui_username = user.username.clone();
+                        record_audit(&ctx, &ui_username, user.role.clone().into(), "OTA_TOKEN_LOGIN_SUCCESS", "CRITICAL").await;
+                        slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.set_login_error("".into());
+                                ui.set_current_user_name(ui_username.into());
+                                ui.set_forced_password_reset_state(true);
                             }
-
-                            Err(_) => {
-                                slint::invoke_from_event_loop(move || {
-                                    if let Some(ui) = ui_weak.upgrade() {
-                                        ui.set_login_error(
-                                            "Authentication Failed: Invalid credentials, token, or HWID mismatch."
-                                                .into(),
-                                        );
-                                    }
-                                }).unwrap();
+                        }).unwrap();
+                    }
+                    AuthDecision::Deny => {
+                        slint::invoke_from_event_loop(move || {
+                            if let Some(ui) = ui_weak.upgrade() {
+                                ui.set_login_error(
+                                    "Authentication Failed: Invalid credentials, token, or HWID mismatch.".into()
+                                );
                             }
-                        }
+                        }).unwrap();
                     }
                 }
             });
