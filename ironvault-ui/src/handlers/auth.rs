@@ -37,7 +37,11 @@ pub fn register(app: &AppWindow, ctx: SharedContext) {
                             designation_str = p_row.try_get("designation").unwrap_or(designation_str);
                             allowed_schemas_str = p_row.try_get("section").unwrap_or(allowed_schemas_str).to_lowercase();
                             if let Ok(dt) = p_row.try_get::<chrono::DateTime<chrono::Utc>, _>("expires_at") {
-                                expires = dt.format("%Y-%m-%d").to_string();
+                                // FIXED: include time, and convert from the stored UTC instant into
+                                // IST for display — same timezone-correctness fix applied to the
+                                // audit log timestamps.
+                                let ist = dt.with_timezone(&chrono_tz::Asia::Kolkata);
+                                expires = ist.format("%Y-%m-%d %H:%M").to_string();
                             }
                         }
 

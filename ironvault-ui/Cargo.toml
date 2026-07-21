@@ -21,6 +21,7 @@ image = "0.25"
 rand = "0.8"
 sqlx = { version = "0.7", features = ["postgres", "runtime-tokio-rustls", "chrono"] }
 dotenvy = "0.15"          # <-- ADDED: loads .env into process environment at startup
+chrono-tz = "0.10"
 
 [dev-dependencies]
 tokio-test = "0.4"
