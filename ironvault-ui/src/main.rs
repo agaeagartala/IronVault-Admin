@@ -3,17 +3,9 @@
 //! to the core security and database layers with automated relational tracking.
 
 slint::include_modules!();
-
-use rand::distributions::Alphanumeric;
-use rand::Rng;
 use slint::ComponentHandle;
-use slint::{ModelRc, VecModel};
-use sqlx::Row;
-use std::rc::Rc;
-
 mod context;
 mod handlers;
-
 use context::AppContext;
 use ironvault_core::audit::AuditLogger;
 use ironvault_db::{DbClient, OracleConnection};
