@@ -4,6 +4,7 @@
 //! Password hashing uses bcrypt (adaptive cost, per-hash random salt) rather than
 //! a bare SHA-256 digest, since password material must resist offline brute force.
 
+use crate::sdk_vmp;
 use aes_gcm::{
     aead::{Aead, KeyInit, Payload},
     Aes256Gcm, Key, Nonce,
@@ -69,7 +70,10 @@ const BCRYPT_COST: u32 = 12;
 /// already encodes the cost factor and salt, so it can be stored directly in the
 /// `password` column and later verified with `verify_password`.
 pub fn hash_password(password: &str) -> Result<String, CryptoError> {
-    bcrypt::hash(password, BCRYPT_COST).map_err(|_| CryptoError::HashingFailed)
+    sdk_vmp::vmp_begin_ultra("HashPasswordCore");
+    let result = bcrypt::hash(password, BCRYPT_COST).map_err(|_| CryptoError::HashingFailed);
+    sdk_vmp::vmp_end();
+    result
 }
 
 /// Verifies a plaintext password attempt against a stored bcrypt hash.
@@ -78,7 +82,10 @@ pub fn hash_password(password: &str) -> Result<String, CryptoError> {
 /// internal bcrypt error, since from the caller's perspective that should be
 /// treated identically to "wrong password" — never leak *why* verification failed.
 pub fn verify_password(password: &str, stored_hash: &str) -> bool {
-    bcrypt::verify(password, stored_hash).unwrap_or(false)
+    sdk_vmp::vmp_begin_ultra("VerifyPasswordCore");
+    let result = bcrypt::verify(password, stored_hash).unwrap_or(false);
+    sdk_vmp::vmp_end();
+    result
 }
 
 impl Encryptor {
@@ -193,15 +200,19 @@ impl Decryptor {
 /// `hash_password`/`verify_password`, which remain bcrypt-based for actual
 /// user-chosen credentials.
 pub fn hash_token(token: &str) -> String {
+    sdk_vmp::vmp_begin_mutation("HashTokenCore");
     let mut hasher = Sha256::new();
- 
-
-   hasher.update(token.as_bytes());
-    format!("{:x}", hasher.finalize())
+    hasher.update(token.as_bytes());
+    let result = format!("{:x}", hasher.finalize());
+    sdk_vmp::vmp_end();
+    result
 }
 
 pub fn verify_token(token: &str, stored_hash: &str) -> bool {
-    hash_token(token) == stored_hash
+    sdk_vmp::vmp_begin_ultra("VerifyTokenCore");
+    let result = hash_token(token) == stored_hash;
+    sdk_vmp::vmp_end();
+    result
 }
 
 /// Expanded Cryptographic errors
